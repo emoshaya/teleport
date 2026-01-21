@@ -447,7 +447,7 @@
     },
     {
       "source": "/admin-guides/access-controls/access-requests/access-request-configuration/",
-      "destination": "/identity-governance/access-requests/access-request-configuration/",
+      "destination": "/identity-governance/access-requests/configuration/",
       "permanent": true
     },
     {
@@ -3628,6 +3628,11 @@
     {
       "source": "/installation/single-machine/amazon-ecs/",
       "destination": "/installation/agents/amazon-ecs/",
+      "permanent": true
+    },
+    {
+      "source": "/identity-governance/access-requests/access-request-configuration/",
+      "destination": "/identity-governance/access-requests/configuration/",
       "permanent": true
     }
   ]
