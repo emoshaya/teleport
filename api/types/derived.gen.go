@@ -19,6 +19,16 @@ func deriveTeleportEqualAccessRequestV3(this, that *AccessRequestV3) bool {
 			deriveTeleportEqual(&this.Spec, &that.Spec)
 }
 
+// deriveTeleportEqualAccessReviewThreshold returns whether this and that are equal.
+func deriveTeleportEqualAccessReviewThreshold(this, that *AccessReviewThreshold) bool {
+	return (this == nil && that == nil) ||
+		this != nil && that != nil &&
+			this.Name == that.Name &&
+			this.Filter == that.Filter &&
+			this.Approve == that.Approve &&
+			this.Deny == that.Deny
+}
+
 // deriveTeleportEqualResourceAccessID returns whether this and that are equal.
 func deriveTeleportEqualResourceAccessID(this, that *ResourceAccessID) bool {
 	return (this == nil && that == nil) ||
@@ -39,16 +49,6 @@ func deriveTeleportEqualSSHResourceConstraints(this, that *SSHResourceConstraint
 	return (this == nil && that == nil) ||
 		this != nil && that != nil &&
 			deriveTeleportEqual_2(this.Logins, that.Logins)
-}
-
-// deriveTeleportEqualAccessReviewThreshold returns whether this and that are equal.
-func deriveTeleportEqualAccessReviewThreshold(this, that *AccessReviewThreshold) bool {
-	return (this == nil && that == nil) ||
-		this != nil && that != nil &&
-			this.Name == that.Name &&
-			this.Filter == that.Filter &&
-			this.Approve == that.Approve &&
-			this.Deny == that.Deny
 }
 
 // deriveTeleportEqualAppV3 returns whether this and that are equal.
@@ -1055,7 +1055,8 @@ func deriveTeleportEqual_56(this, that *DatabaseAdminUser) bool {
 	return (this == nil && that == nil) ||
 		this != nil && that != nil &&
 			this.Name == that.Name &&
-			this.DefaultDatabase == that.DefaultDatabase
+			this.DefaultDatabase == that.DefaultDatabase &&
+			this.ReassignmentUser == that.ReassignmentUser
 }
 
 // deriveTeleportEqual_57 returns whether this and that are equal.
