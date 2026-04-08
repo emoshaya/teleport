@@ -269,7 +269,11 @@ test('something', async () => {});
 
 	t.Run("connect test detects Connect fixture via helper", func(t *testing.T) {
 		rel, _ := filepath.Rel(e2eDir, filepath.Join(testsDir, "auth.spec.ts"))
-		got := scanFixtures(e2eDir, []string{rel})
+		targets, err := resolveTargetsWithHelpers(e2eDir, []string{rel})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := scanFixturesFromTargets(targets)
 
 		if len(got) != 1 {
 			t.Fatalf("expected 1 fixture, got %d", len(got))
@@ -282,7 +286,11 @@ test('something', async () => {});
 
 	t.Run("web test does not detect Connect fixture", func(t *testing.T) {
 		rel, _ := filepath.Rel(e2eDir, filepath.Join(webDir, "roles.spec.ts"))
-		got := scanFixtures(e2eDir, []string{rel})
+		targets, err := resolveTargetsWithHelpers(e2eDir, []string{rel})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := scanFixturesFromTargets(targets)
 
 		if len(got) != 0 {
 			t.Fatalf("expected 0 fixtures, got %d", len(got))
@@ -340,6 +348,276 @@ func TestResolveFilesToScan(t *testing.T) {
 			t.Fatalf("expected 1 target, got %d", len(targets))
 		}
 	})
+}
+
+func TestScanUsers(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		wantUsers []scannedUser
+	}{
+		{
+			name:      "no users declaration",
+			content:   `test.use({ fixtures: ['ssh-node'] });`,
+			wantUsers: nil,
+		},
+		{
+			name: "singular user with built-in roles",
+			content: `test.use({
+  user: { roles: ['access', 'editor'] },
+});`,
+			wantUsers: []scannedUser{
+				{
+					roles: []scannedRole{
+						{name: "access"},
+						{name: "editor"},
+					},
+					loginAs: true,
+				},
+			},
+		},
+		{
+			name: "users array with loginAs",
+			content: `test.use({
+  users: [
+    { roles: ['access', 'editor'], loginAs: true },
+    { roles: [{ file: '@gravitational/e2e/roles/viewer.yaml' }] },
+  ],
+});`,
+			wantUsers: []scannedUser{
+				{
+					roles: []scannedRole{
+						{name: "access"},
+						{name: "editor"},
+					},
+					loginAs: true,
+				},
+				{
+					roles: []scannedRole{
+						{file: "viewer.yaml"},
+					},
+				},
+			},
+		},
+		{
+			name: "user with file role",
+			content: `test.use({
+  user: { roles: [{ file: '@gravitational/e2e/roles/viewer.yaml' }] },
+});`,
+			wantUsers: []scannedUser{
+				{
+					roles: []scannedRole{
+						{file: "viewer.yaml"},
+					},
+					loginAs: true,
+				},
+			},
+		},
+		{
+			name: "user with traits",
+			content: `test.use({
+  user: {
+    roles: ['access'],
+    traits: { logins: ['root', 'alice'], kubernetes_groups: ['dev'] },
+  },
+});`,
+			wantUsers: []scannedUser{
+				{
+					roles: []scannedRole{
+						{name: "access"},
+					},
+					traits: map[string][]string{
+						"logins":            {"root", "alice"},
+						"kubernetes_groups": {"dev"},
+					},
+					loginAs: true,
+				},
+			},
+		},
+		{
+			name:      "commented out users are ignored",
+			content:   `// test.use({ user: { roles: ['access'] } });`,
+			wantUsers: nil,
+		},
+		{
+			name: "user alongside fixtures",
+			content: `test.use({
+  fixtures: ['ssh-node'],
+  user: { roles: ['access'] },
+});`,
+			wantUsers: []scannedUser{
+				{
+					roles: []scannedRole{
+						{name: "access"},
+					},
+					loginAs: true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tmpFile := filepath.Join(dir, "test.spec.ts")
+			writeFile(t, dir, "test.spec.ts", tt.content)
+
+			got := scanFileUsers(tmpFile, 0)
+
+			if len(got) != len(tt.wantUsers) {
+				t.Fatalf("got %d users, want %d", len(got), len(tt.wantUsers))
+			}
+
+			for i, u := range got {
+				want := tt.wantUsers[i]
+
+				if u.loginAs != want.loginAs {
+					t.Errorf("user[%d] loginAs = %v, want %v", i, u.loginAs, want.loginAs)
+				}
+
+				if len(u.roles) != len(want.roles) {
+					t.Fatalf("user[%d] got %d roles, want %d", i, len(u.roles), len(want.roles))
+				}
+
+				for j, r := range u.roles {
+					if r.name != want.roles[j].name {
+						t.Errorf("user[%d] role[%d] name = %q, want %q", i, j, r.name, want.roles[j].name)
+					}
+
+					if r.file != want.roles[j].file {
+						t.Errorf("user[%d] role[%d] file = %q, want %q", i, j, r.file, want.roles[j].file)
+					}
+				}
+
+				if want.traits != nil {
+					if u.traits == nil {
+						t.Errorf("user[%d] traits = nil, want %v", i, want.traits)
+					} else {
+						for k, wantVals := range want.traits {
+							gotVals, ok := u.traits[k]
+							if !ok {
+								t.Errorf("user[%d] missing trait %q", i, k)
+								continue
+							}
+
+							if len(gotVals) != len(wantVals) {
+								t.Errorf("user[%d] trait %q has %d values, want %d", i, k, len(gotVals), len(wantVals))
+								continue
+							}
+
+							for vi, v := range gotVals {
+								if v != wantVals[vi] {
+									t.Errorf("user[%d] trait %q[%d] = %q, want %q", i, k, vi, v, wantVals[vi])
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestScanUsersDefaultUser(t *testing.T) {
+	e2eDir := t.TempDir()
+	testsDir := createDir(t, e2eDir, "tests")
+
+	// A spec that declares no users at all.
+	writeFile(t, testsDir, "basic.spec.ts", `test.use({ fixtures: ['ssh-node'] });`)
+
+	targets, err := resolveTargetsWithHelpers(e2eDir, []string{"tests/basic.spec.ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := scanUsersFromTargets(targets)
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 user, got %d", len(got))
+	}
+
+	if len(got[0].roles) != 2 {
+		t.Fatalf("expected 2 roles for default user, got %d", len(got[0].roles))
+	}
+
+	if got[0].roles[0].name != "access" {
+		t.Errorf("expected first role 'access', got %q", got[0].roles[0].name)
+	}
+
+	if got[0].roles[1].name != "editor" {
+		t.Errorf("expected second role 'editor', got %q", got[0].roles[1].name)
+	}
+
+	if !got[0].loginAs {
+		t.Error("expected default user to have loginAs=true")
+	}
+}
+
+func TestScanRecordings(t *testing.T) {
+	tests := []struct {
+		name           string
+		content        string
+		wantUsers      int
+		wantRecordings []string // recordings on the first user
+		wantLoginAs    bool
+	}{
+		{
+			name: "top-level recordings creates default user",
+			content: `test.use({
+  recordings: ['ssh-session-1', 'desktop-session-2'],
+});`,
+			wantUsers:      1,
+			wantRecordings: []string{"ssh-session-1", "desktop-session-2"},
+			wantLoginAs:    true,
+		},
+		{
+			name: "recordings on user definition",
+			content: `test.use({
+  user: { roles: ['access'], recordings: ['ssh-session-1'] },
+});`,
+			wantUsers:      1,
+			wantRecordings: []string{"ssh-session-1"},
+			wantLoginAs:    true,
+		},
+		{
+			name:           "no recordings",
+			content:         `test.use({ user: { roles: ['access'] } });`,
+			wantUsers:      1,
+			wantRecordings: nil,
+			wantLoginAs:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tmpFile := filepath.Join(dir, "test.spec.ts")
+			writeFile(t, dir, "test.spec.ts", tt.content)
+
+			got := scanFileUsers(tmpFile, 0)
+
+			if len(got) != tt.wantUsers {
+				t.Fatalf("got %d users, want %d", len(got), tt.wantUsers)
+			}
+
+			if tt.wantUsers == 0 {
+				return
+			}
+
+			if got[0].loginAs != tt.wantLoginAs {
+				t.Errorf("loginAs = %v, want %v", got[0].loginAs, tt.wantLoginAs)
+			}
+
+			if len(got[0].recordings) != len(tt.wantRecordings) {
+				t.Fatalf("got %d recordings, want %d: %v", len(got[0].recordings), len(tt.wantRecordings), got[0].recordings)
+			}
+
+			for i, r := range got[0].recordings {
+				if r != tt.wantRecordings[i] {
+					t.Errorf("recording[%d] = %q, want %q", i, r, tt.wantRecordings[i])
+				}
+			}
+		})
+	}
 }
 
 func createDir(t *testing.T, path ...string) string {

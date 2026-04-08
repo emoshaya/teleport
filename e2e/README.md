@@ -67,6 +67,74 @@ Available fixtures:
 Fixtures can also be enabled manually with `--with-<name>` flags (e.g. `--with-ssh-node`, `--with-connect`),
 which is useful for modes like `--codegen` or `--browse` where auto-detection does not run.
 
+### Users and Roles
+
+By default, the runner creates a single user with the `access` and `editor` roles. Tests that need custom
+roles or traits can declare them via `test.use()`. Usernames are auto-generated as human-readable IDs
+(e.g. `brave-falcon`) — tests don't specify names.
+
+**Single user (most common):**
+
+```ts
+test.use({
+  user: { roles: ['access', 'editor'] },
+});
+```
+
+The singular `user` form creates one user and automatically logs in as that user.
+
+**Multiple users:**
+
+For tests that need more than one user (e.g. RBAC tests), use the `users` array. At least one user must
+have `loginAs: true` to indicate which user the test authenticates as:
+
+```ts
+test.use({
+  users: [
+    { roles: ['access', 'editor'], loginAs: true },
+    { roles: [{ file: '@gravitational/e2e/roles/viewer.yaml' }] },
+  ],
+});
+```
+
+**Traits:**
+
+Users can specify Teleport traits. Built-in trait keys (`logins`, `kubernetes_groups`, `db_names`, etc.)
+are typed in the `UserTraits` interface, and custom keys are also supported:
+
+```ts
+test.use({
+  user: {
+    roles: ['access'],
+    traits: { logins: ['root', 'alice'], kubernetes_groups: ['dev'] },
+  },
+});
+```
+
+When traits are omitted, the default is `{ logins: ['root'] }`.
+
+**Custom roles from YAML files:**
+
+For roles that don't exist as built-in Teleport roles, reference a YAML file in `e2e/testdata/roles/`:
+
+```ts
+test.use({
+  user: {
+    roles: [{ file: '@gravitational/e2e/roles/rbac-read-access.yaml' }],
+  },
+});
+```
+
+The `@gravitational/e2e/roles/` prefix is stripped and the file is loaded from `e2e/testdata/roles/`. The role
+name is extracted from `metadata.name` in the YAML. Custom role files are deduplicated, so multiple users can
+reference the same file.
+
+**`username` fixture:** The generated username of the logged-in user is available as the `username`
+fixture value, for use in test assertions.
+
+**Scoping:** `test.use()` follows Playwright's normal scoping rules — place it inside a `test.describe()` block
+to limit it to that group, or at the top level of a file to apply to all tests in the file.
+
 ### Session Recordings
 
 The runner automatically seeds session recordings into Teleport's data directory at startup so the Web UI's
@@ -94,8 +162,8 @@ The `events.jsonl` file contains the session end audit events and is auto-genera
 To add a new recording, place the `.tar` file (and any `.metadata`/`.thumbnail` files) in the appropriate subdirectory
 (`ssh/`, `k8s/`, or `desktop/`).
 
-By default, all recordings are associated with the `bob` user. To assign a recording to a different user,
-add the session ID and username to the `recordingUserMap` in `e2e/runner/recordings.go`.
+Recordings are opt-in — only recordings referenced in `test.use()` via `recordings` or `UserDefinition.recordings`
+are seeded. Each recording is associated with the user that declares it.
 
 At runtime, the runner copies recording files into Teleport's records directory and appends the audit events
 to the audit log with adjusted timestamps so that sessions appear recent in the UI.

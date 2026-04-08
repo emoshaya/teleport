@@ -141,7 +141,7 @@ type e2eConfig struct {
 	connectAppDir     string
 	connectTshBinPath string
 
-	creds *credentials
+	creds map[string]*credentials
 
 	instances       []*browserInstance
 	connectInstance *browserInstance
@@ -271,14 +271,32 @@ func run(flags *e2eFlags, mode runMode, e2eDir string, isCI bool) error {
 			}
 		}
 
-		creds, err := generateUserCredentials()
-		if err != nil {
-			return fmt.Errorf("failed to generate credentials: %w", err)
+		targets := flags.scanTargets
+		if targets == nil {
+			var err error
+			targets, err = resolveTargetsWithHelpers(e2eDir, flags.testFiles)
+			if err != nil {
+				return fmt.Errorf("failed to resolve scan targets: %w", err)
+			}
 		}
-		config.creds = creds
+
+		scannedUsers := scanUsersFromTargets(targets)
+		slog.Debug("discovered bootstrap users", "count", len(scannedUsers))
+
+		bootstrap, err := buildBootstrapState(e2eDir, scannedUsers)
+		if err != nil {
+			return fmt.Errorf("failed to build bootstrap state: %w", err)
+		}
+		config.creds = bootstrap.creds
+
+		userMappingPath := filepath.Join(e2eDir, ".auth", "user-mapping.json")
+		if err := writeUserMapping(userMappingPath, bootstrap.userMapping); err != nil {
+			return fmt.Errorf("failed to write user mapping: %w", err)
+		}
+		slog.Debug("wrote user mapping", "path", userMappingPath, "users", len(bootstrap.userMapping))
 
 		// One shared state file used by all instances.
-		stateFile, err := generateStateFile(config.stateTemplate, creds)
+		stateFile, err := generateStateFile(config.stateTemplate, bootstrap.state)
 		if err != nil {
 			return fmt.Errorf("failed to generate state file: %w", err)
 		}
@@ -325,7 +343,7 @@ func run(flags *e2eFlags, mode runMode, e2eDir string, isCI bool) error {
 				if err := teleport.waitReady(gctx, 30*time.Second); err != nil {
 					return fmt.Errorf("teleport for %s failed to become ready: %w", inst.browser, err)
 				}
-				if err := seedRecordings(gctx, config.e2eDir, inst.dataDir); err != nil {
+				if err := seedRecordings(gctx, config.e2eDir, inst.dataDir, bootstrap.recordingOwners); err != nil {
 					return fmt.Errorf("failed to seed session recordings for %s: %w", inst.browser, err)
 				}
 				return nil
