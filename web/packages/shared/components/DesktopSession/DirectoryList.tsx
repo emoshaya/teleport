@@ -15,12 +15,18 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+import styled from 'styled-components';
+
 import { Flex, Stack, Text } from 'design';
-import { ButtonPrimary, ButtonSecondary } from 'design/Button/Button';
+import {
+  ButtonFill,
+  ButtonIntent,
+  ButtonPrimary,
+  ButtonSecondary,
+} from 'design/Button/Button';
 import { Eject, FolderPlus, Plus } from 'design/Icon';
 import { HoverTooltip } from 'design/Tooltip';
 import { MenuIcon } from 'shared/components/MenuAction';
-import styled from 'styled-components';
 
 interface SharedDirectoriesProps {
   sharedDirectories: DirectoryItem[];
@@ -84,7 +90,10 @@ export function SharedDirectoryList({
 
           {/* If not supported, explain to the user that removal is not supported for the
           // connect WDS version, but may be supported on new versions. */}
-          {removalSupportInformation(canRemoveSharedDirectory)}
+          {removalSupportInformation(
+            canRemoveSharedDirectory,
+            sharedDirectories.length
+          )}
         </Stack>
       </Container>
     </MenuIcon>
@@ -97,19 +106,43 @@ function directoryEntry(
   isRemoveSupported: boolean,
   onRemove: (id: number) => void
 ) {
+  let buttonProps: {
+    disabled: boolean;
+    intent: ButtonIntent;
+    fill: ButtonFill;
+  } = {
+    disabled: false,
+    intent: 'primary',
+    fill: 'minimal',
+  };
+  let hoverText = 'Disconnect 1 shared directory';
   if (!isRemoveSupported) {
-    return <Text fontSize={3}>{name}</Text>;
+    hoverText = `
+      Disconnecting shared directories is not supported by this version of
+      Windows Desktop Service. To enable this feature, contact your Teleport
+      administrator about upgrading the Windows Desktop Service instance(s) in
+      your Teleport cluster.
+      `;
+  }
+
+  if (!isRemoveSupported) {
+    buttonProps = {
+      disabled: true,
+      intent: 'neutral',
+      fill: 'filled',
+    };
   }
 
   return (
     <Flex justifyContent="space-between" alignItems="center">
-      <Text fontSize={3}>{name}</Text>
-      <HoverTooltip placement="bottom" tipContent={'unshare directory'}>
+      <Text fontSize={2}>{name}</Text>
+      <HoverTooltip placement="bottom" tipContent={hoverText}>
         <Flex flexShrink={0}>
           <ButtonSecondary
             size="small"
             compact={true}
             onClick={() => onRemove(id)}
+            {...buttonProps}
           >
             <Eject size="small" />
           </ButtonSecondary>
@@ -119,13 +152,20 @@ function directoryEntry(
   );
 }
 
-function removalSupportInformation(isRemoveSupported: boolean) {
+function removalSupportInformation(
+  isRemoveSupported: boolean,
+  directoryCount: number
+) {
+  let copyText = 'Disconnect this shared directory by restarting your session.';
+  if (directoryCount > 1) {
+    copyText =
+      'Disconnect these shared directories by restarting your session.';
+  }
+
   if (!isRemoveSupported) {
     return (
       <Text fontSize={1} color="text.muted">
-        To disconnect all shared directories, restart your session. Upgrade to
-        the latest version of Teleport for in-line disconnection, one shared
-        directory at a time.
+        {copyText}
       </Text>
     );
   }
