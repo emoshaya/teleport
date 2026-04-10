@@ -48,6 +48,7 @@ import (
 	"github.com/gravitational/teleport/api/trail"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/api/types/events"
+	"github.com/gravitational/teleport/api/types/wrappers"
 )
 
 func TestMain(m *testing.M) {
@@ -984,6 +985,128 @@ type preparedSessionEvent struct {
 
 func (p preparedSessionEvent) GetAuditEvent() events.AuditEvent {
 	return p.event
+}
+
+func TestProtoPrincipalsToMap(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		principals map[string]*wrappers.StringValues
+		want       map[types.PrincipalKind][]string
+	}{
+		{
+			name:       "nil input returns nil",
+			principals: nil,
+			want:       nil,
+		},
+		{
+			name:       "empty map returns nil",
+			principals: map[string]*wrappers.StringValues{},
+			want:       nil,
+		},
+		{
+			name: "nil value entry is skipped",
+			principals: map[string]*wrappers.StringValues{
+				string(types.PrincipalKindSSHLogins): nil,
+			},
+			want: map[types.PrincipalKind][]string{},
+		},
+		{
+			name: "single kind",
+			principals: map[string]*wrappers.StringValues{
+				string(types.PrincipalKindSSHLogins): {Values: []string{"alice", "bob"}},
+			},
+			want: map[types.PrincipalKind][]string{
+				types.PrincipalKindSSHLogins: {"alice", "bob"},
+			},
+		},
+		{
+			name: "multiple kinds",
+			principals: map[string]*wrappers.StringValues{
+				string(types.PrincipalKindDBUsers): {Values: []string{"admin"}},
+				string(types.PrincipalKindDBNames): {Values: []string{"mydb"}},
+				string(types.PrincipalKindDBRoles): {Values: []string{"readwrite"}},
+			},
+			want: map[types.PrincipalKind][]string{
+				types.PrincipalKindDBUsers: {"admin"},
+				types.PrincipalKindDBNames: {"mydb"},
+				types.PrincipalKindDBRoles: {"readwrite"},
+			},
+		},
+		{
+			name: "mixed nil and non-nil values",
+			principals: map[string]*wrappers.StringValues{
+				string(types.PrincipalKindSSHLogins):     {Values: []string{"alice"}},
+				string(types.PrincipalKindWindowsLogins): nil,
+			},
+			want: map[types.PrincipalKind][]string{
+				types.PrincipalKindSSHLogins: {"alice"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := protoPrincipalsToMap(tc.principals)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestConvertEnrichedResourcePrincipals(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		resource *proto.PaginatedResource
+		want     map[types.PrincipalKind][]string
+	}{
+		{
+			name: "node",
+			resource: &proto.PaginatedResource{
+				Resource: &proto.PaginatedResource_Node{Node: &types.ServerV2{}},
+				Principals: map[string]*wrappers.StringValues{
+					string(types.PrincipalKindSSHLogins): {Values: []string{"alice"}},
+				},
+			},
+			want: map[types.PrincipalKind][]string{
+				types.PrincipalKindSSHLogins: {"alice"},
+			},
+		},
+		{
+			name: "database server",
+			resource: &proto.PaginatedResource{
+				Resource: &proto.PaginatedResource_DatabaseServer{DatabaseServer: &types.DatabaseServerV3{}},
+				Principals: map[string]*wrappers.StringValues{
+					string(types.PrincipalKindDBUsers): {Values: []string{"admin"}},
+					string(types.PrincipalKindDBNames): {Values: []string{"mydb"}},
+				},
+			},
+			want: map[types.PrincipalKind][]string{
+				types.PrincipalKindDBUsers: {"admin"},
+				types.PrincipalKindDBNames: {"mydb"},
+			},
+		},
+		{
+			name: "app server",
+			resource: &proto.PaginatedResource{
+				Resource: &proto.PaginatedResource_AppServer{AppServer: &types.AppServerV3{}},
+				Principals: map[string]*wrappers.StringValues{
+					string(types.PrincipalKindAWSRoleARNs): {Values: []string{"arn:aws:iam::123456789012:role/Role"}},
+				},
+			},
+			want: map[types.PrincipalKind][]string{
+				types.PrincipalKindAWSRoleARNs: {"arn:aws:iam::123456789012:role/Role"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			enriched, err := convertEnrichedResource(tc.resource)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, enriched.Principals)
+		})
+	}
 }
 
 func TestWindowsCAFallback(t *testing.T) {

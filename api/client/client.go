@@ -4482,31 +4482,40 @@ type ResourcePage[T types.ResourceWithLabels] struct {
 // convertEnrichedResource extracts the resource and any enriched information from the
 // PaginatedResource returned from the rpc ListUnifiedResources.
 func convertEnrichedResource(resource *proto.PaginatedResource) (*types.EnrichedResource, error) {
+	if resource == nil {
+		return nil, trace.BadParameter("resource is nil")
+	}
 	var rwl types.ResourceWithLabels
-	if r := resource.GetNode(); r != nil {
-		rwl = r
-	} else if r := resource.GetDatabaseServer(); r != nil {
-		rwl = r
-	} else if r := resource.GetDatabaseService(); r != nil {
-		rwl = r
-	} else if r := resource.GetWindowsDesktop(); r != nil {
-		rwl = r
-	} else if r := resource.GetWindowsDesktopService(); r != nil {
-		rwl = r
-	} else if r := resource.GetKubeCluster(); r != nil {
-		rwl = r
-	} else if r := resource.GetKubernetesServer(); r != nil {
-		rwl = r
-	} else if r := resource.GetUserGroup(); r != nil {
-		rwl = r
-	} else if r := resource.GetAppServer(); r != nil {
-		rwl = r
-	} else if r := resource.GetSAMLIdPServiceProvider(); r != nil {
-		rwl = r
-	} else if r := resource.GetGitServer(); r != nil {
-		rwl = r
-	} else {
+	switch r := resource.Resource.(type) {
+	case *proto.PaginatedResource_Node:
+		rwl = r.Node
+	case *proto.PaginatedResource_DatabaseServer:
+		rwl = r.DatabaseServer
+	case *proto.PaginatedResource_DatabaseService:
+		rwl = r.DatabaseService
+	case *proto.PaginatedResource_WindowsDesktop:
+		rwl = r.WindowsDesktop
+	case *proto.PaginatedResource_WindowsDesktopService:
+		rwl = r.WindowsDesktopService
+	case *proto.PaginatedResource_KubeCluster:
+		rwl = r.KubeCluster
+	case *proto.PaginatedResource_KubernetesServer:
+		rwl = r.KubernetesServer
+	case *proto.PaginatedResource_UserGroup:
+		rwl = r.UserGroup
+	case *proto.PaginatedResource_AppServer:
+		rwl = r.AppServer
+	case *proto.PaginatedResource_SAMLIdPServiceProvider:
+		rwl = r.SAMLIdPServiceProvider
+	case *proto.PaginatedResource_GitServer:
+		rwl = r.GitServer
+	case nil:
+		return nil, trace.BadParameter("resource field is empty")
+	default:
 		return nil, trace.BadParameter("received unsupported resource %T", resource.Resource)
+	}
+	if rwl == nil {
+		return nil, trace.BadParameter("resource has nil payload for type %T", resource.Resource)
 	}
 
 	return &types.EnrichedResource{

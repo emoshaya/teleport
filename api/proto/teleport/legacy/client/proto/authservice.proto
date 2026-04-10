@@ -2238,15 +2238,15 @@ message PaginatedResource {
   // that IncludeRequestable.
   bool RequiresRequest = 14 [(gogoproto.jsontag) = "requires_request,omitempty"];
 
-  // Principals maps principal dimension keys to their allowed values for this resource.
-  // Keys are well-known dimension names (e.g. "ssh_logins", "db_users", "db_names",
-  // "db_roles", "aws_role_arns"). Only populated when IncludeLogins is true.
-  map<string, wrappers.StringValues> Principals = 20 [(gogoproto.jsontag) = "principals,omitempty"];
-
   reserved 4;
   reserved "KubeService";
   reserved 11;
   reserved "AppServerOrSAMLIdPServiceProvider";
+
+  // Principals maps principal dimension keys to their allowed values for this resource.
+  // Keys are well-known dimension names (e.g. "ssh_logins", "db_users", "db_names",
+  // "db_roles", "aws_role_arns"). Only populated when IncludeLogins is true.
+  map<string, wrappers.StringValues> Principals = 17 [(gogoproto.jsontag) = "principals,omitempty"];
 }
 
 // ListUnifiedResourcesRequest is a request to receive a paginated list of unified resources
