@@ -50,6 +50,7 @@ import (
 	"github.com/gravitational/teleport/lib/multiplexer"
 	"github.com/gravitational/teleport/lib/relaytunnel"
 	"github.com/gravitational/teleport/lib/reversetunnelclient"
+	"github.com/gravitational/teleport/lib/scopes"
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/services/readonly"
 	"github.com/gravitational/teleport/lib/srv"
@@ -493,7 +494,7 @@ func (t *TLSServer) GetConfigForClient(info *tls.ClientHelloInfo) (*tls.Config, 
 
 // GetServerInfo returns a services.Server object for heartbeats (aka
 // presence).
-func (t *TLSServer) GetServerInfo(name string) (*types.KubernetesServerV3, error) {
+func (t *TLSServer) GetServerInfo(ctx context.Context, name string) (*types.KubernetesServerV3, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	var addr string
@@ -503,7 +504,7 @@ func (t *TLSServer) GetServerInfo(name string) (*types.KubernetesServerV3, error
 		addr = t.listener.Addr().String()
 	}
 
-	cluster, err := t.getKubeClusterWithServiceLabels(name)
+	cluster, err := t.getKubeClusterWithServiceLabels(ctx, name)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -539,6 +540,9 @@ func (t *TLSServer) GetServerInfo(name string) (*types.KubernetesServerV3, error
 			RelayGroup: relayGroup,
 			RelayIds:   relayIDs,
 		},
+		// getKubeClusterWithServiceLabels already ensures that the cluster has the correct scope and that scope
+		// is usable by this forwarder. We only need to make sure that the kube server we build shares the same scope
+		types.WithKubeServerScope(cluster.GetScope()),
 	)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -626,7 +630,7 @@ func (t *TLSServer) getTargetHealth(ctx context.Context, cluster types.KubeClust
 // the cluster with the service dynamic and static labels.
 // We strip the Azure, AWS and Kubeconfig credentials so they are not leaked when
 // heartbeating the cluster.
-func (t *TLSServer) getKubeClusterWithServiceLabels(name string) (*types.KubernetesClusterV3, error) {
+func (t *TLSServer) getKubeClusterWithServiceLabels(ctx context.Context, name string) (*types.KubernetesClusterV3, error) {
 	// it is safe do read from details since the structure is never updated.
 	// we replace the whole structure each time an update happens to a dynamic cluster.
 	details, err := t.fwd.findKubeDetailsByClusterName(name)
@@ -638,6 +642,20 @@ func (t *TLSServer) getKubeClusterWithServiceLabels(name string) (*types.Kuberne
 	clusterWithoutCreds, err := types.NewKubernetesClusterV3WithoutSecrets(details.kubeCluster)
 	if err != nil {
 		return nil, trace.Wrap(err)
+	}
+
+	if t.Scope != "" && scopes.Compare(t.Scope, details.kubeCluster.GetScope()) != scopes.Equivalent {
+		// If the kube cluster somehow already has a scope assigned to it and that scope does not match this
+		// server, deny the request. This will ultimately cause heartbeats to fail. If the server's scope is
+		// not set and the kube cluster has a scope, then we allow this call to succeed in order to support
+		// the proxy service's kube forwarder which does not have a scope.
+		t.log.ErrorContext(ctx, "kube cluster already has a scope different from this server", "server_scope", t.Scope, "kube_cluster_scope", details.kubeCluster.GetScope())
+		return nil, trace.AccessDenied("kube cluster already has a scope different from this server")
+	}
+
+	if t.Scope != "" {
+		// if the kube cluster doesn't have a scope and this server does, then set the cluster's scoped to match
+		clusterWithoutCreds.Scope = t.Scope
 	}
 
 	if details.dynamicLabels != nil {
@@ -654,7 +672,7 @@ func (t *TLSServer) startHeartbeat(name string) error {
 	heartbeat, err := srv.NewKubernetesServerHeartbeat(srv.HeartbeatV2Config[*types.KubernetesServerV3]{
 		InventoryHandle: t.InventoryHandle,
 		Announcer:       t.TLSServerConfig.AuthClient,
-		GetResource:     func(context.Context) (*types.KubernetesServerV3, error) { return t.GetServerInfo(name) },
+		GetResource:     func(ctx context.Context) (*types.KubernetesServerV3, error) { return t.GetServerInfo(ctx, name) },
 		OnHeartbeat:     t.TLSServerConfig.OnHeartbeat,
 	})
 	if err != nil {
@@ -757,9 +775,9 @@ func (t *TLSServer) setServiceLabels(cluster types.KubeCluster) {
 func (t *TLSServer) getKubernetesServersForKubeClusterFunc() (getKubeServersByNameFunc, error) {
 	switch t.KubeServiceType {
 	case KubeService:
-		return func(_ context.Context, name string) ([]types.KubeServer, error) {
+		return func(ctx context.Context, name string) ([]types.KubeServer, error) {
 			// If this is a kube_service, we can just return the local kube servers.
-			kube, err := t.getKubeClusterWithServiceLabels(name)
+			kube, err := t.getKubeClusterWithServiceLabels(ctx, name)
 			if err != nil {
 				return nil, trace.Wrap(err)
 			}
@@ -781,7 +799,7 @@ func (t *TLSServer) getKubernetesServersForKubeClusterFunc() (getKubeServersByNa
 			// If this is a legacy kube proxy, then we need to return the local kube servers if
 			// the local server is proxying the target cluster, otherwise act like a proxy_service.
 			// and forward the request to the next proxy.
-			kube, err := t.getKubeClusterWithServiceLabels(name)
+			kube, err := t.getKubeClusterWithServiceLabels(ctx, name)
 			if err != nil {
 				servers, err := t.KubernetesServersWatcher.CurrentResourcesWithFilter(ctx, func(ks readonly.KubeServer) bool {
 					return ks.GetCluster().GetName() == name
