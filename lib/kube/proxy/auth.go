@@ -29,11 +29,13 @@ import (
 	"net/url"
 
 	"github.com/gravitational/trace"
+
 	authzapi "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/client-go/kubernetes"
 	authztypes "k8s.io/client-go/kubernetes/typed/authorization/v1"
+
 	// Load kubeconfig auth plugins for gcp and azure.
 	// Without this, users can't provide a kubeconfig using those.
 	//
@@ -130,9 +132,12 @@ func (f *Forwarder) getKubeDetails(ctx context.Context) error {
 			)
 			continue
 		}
-		kubeCluster, err := types.NewKubernetesClusterV3(types.Metadata{
-			Name: cluster,
-		}, types.KubernetesClusterSpecV3{})
+		kubeCluster, err := types.NewKubernetesClusterV3(
+			types.Metadata{
+				Name: cluster,
+			}, types.KubernetesClusterSpecV3{},
+			types.KubeClusterWithScope(f.cfg.Scope),
+		)
 		if err != nil {
 			f.log.WarnContext(ctx, "failed to create KubernetesClusterV3 from credentials for cluster",
 				"cluster", cluster,
