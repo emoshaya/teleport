@@ -170,7 +170,7 @@ export default function useDesktopSession(
 
   const removeSharedDirectory = async (directoryId: number) => {
     try {
-      await tdpClient.unshareDirectory(directoryId);
+      tdpClient.unshareDirectory(directoryId);
       setSharedDirectoriesState(
         tdpClient.listSharedDirectories().map(entry => {
           return {

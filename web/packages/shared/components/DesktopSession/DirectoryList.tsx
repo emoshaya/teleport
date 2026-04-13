@@ -89,7 +89,7 @@ export function SharedDirectoryList({
           )}
 
           {/* If not supported, explain to the user that removal is not supported for the
-          // connect WDS version, but may be supported on new versions. */}
+              connected WDS version, but may be supported on new versions. */}
           {removalSupportInformation(
             canRemoveSharedDirectory,
             sharedDirectories.length

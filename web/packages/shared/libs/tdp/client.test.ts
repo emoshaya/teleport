@@ -18,6 +18,7 @@
 
 import { Envelope } from 'gen-proto-ts/teleport/desktop/v1/tdpb_pb';
 
+import { forEach } from '../ironrdp/mock_ironrdp';
 import { TdpClient, TdpTransport } from './client';
 import { SharedDirectoryAccess } from './sharedDirectoryAccess';
 
@@ -88,4 +89,44 @@ test('tdp upgrade', async () => {
   const hello = envelope.payload.clientHello;
   expect(hello.screenSpec).toEqual({ width: 1920, height: 1080 });
   expect(hello.keyboardLayout).toEqual(4);
+});
+
+test('shared directory management', async () => {
+  let client = new TdpClient(
+    () => Promise.resolve(mockTransport),
+    () => {
+      return Promise.resolve(mockSharedDirectoryAccess);
+    }
+  );
+
+  let manager = client['directoryManager'];
+  await Array.from({ length: 10 }, () => manager.shareDirectory());
+  // Identifiers begin at 2
+  const directories = manager.listSharedDirectories();
+  expect(directories).toHaveLength(10);
+
+  // Reached maximum number of shared directories
+  await expect(manager.shareDirectory()).rejects.toThrow();
+  // unshare all
+  manager.reset();
+
+  let shareUnshare = async () => {
+    const res = await manager.shareDirectory();
+    manager.unshareDirectory(res[0]);
+  };
+
+  // 11 more
+  await Promise.all(Array.from({ length: 11 }, () => shareUnshare()));
+
+  // The range of valid device identifiers is currently [2, 22]
+  // Initial and released identifiers are added to a FIFO, so the
+  // next leased identifier should be be 2.
+  const res = await manager.shareDirectory();
+  expect(res[0]).toEqual(2);
+
+  const warn = jest.spyOn(console, 'warn').mockImplementation();
+  // releasing an unknown or unleased identifier does not throw, but
+  // should log a warning.
+  manager.unshareDirectory(3);
+  expect(warn).toHaveBeenCalled();
 });

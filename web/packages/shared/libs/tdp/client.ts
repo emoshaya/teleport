@@ -168,8 +168,6 @@ export class TdpClient extends EventEmitter<EventMap> {
   protected transport: TdpTransport | undefined;
   private transportAbortController: AbortController | undefined;
   private fastPathProcessor: FastPathProcessor | undefined;
-  //private sharedDirectories: Map<number, SharedDirectoryAccess>;
-  //private sharedDirectory: SharedDirectoryAccess | undefined;
   private directoryManager: SharedDirectoryManager;
   private keyboardLayout: number | undefined;
   private screenSpec: ClientScreenSpec | undefined;
@@ -179,7 +177,7 @@ export class TdpClient extends EventEmitter<EventMap> {
 
   constructor(
     private getTransport: (signal: AbortSignal) => Promise<TdpTransport>,
-    private selectSharedDirectory: () => Promise<SharedDirectoryAccess>,
+    selectSharedDirectory: () => Promise<SharedDirectoryAccess>,
     private policy: ConnectPolicy = { mode: 'tdp' }
   ) {
     super();
@@ -891,7 +889,7 @@ export class TdpClient extends EventEmitter<EventMap> {
     return [id, name];
   }
 
-  async unshareDirectory(directoryId: number) {
+  unshareDirectory(directoryId: number) {
     this.directoryManager.unshareDirectory(directoryId);
     this.sendRemoveSharedDirectory(directoryId);
   }
@@ -1058,13 +1056,13 @@ class SharedDirectoryManager {
 
   async shareDirectory(): Promise<[number, string]> {
     if (this.sharedDirectories.size >= this.max_directories) {
-      throw Error("Maximum allowed shared directories reached")
+      throw Error('Maximum allowed shared directories reached');
     }
 
     let directory = await this.selectSharedDirectory();
     const id = this.device_id.acquire();
     if (id === undefined) {
-      throw Error("Error acquiring identifier for shared directory")
+      throw Error('Error acquiring identifier for shared directory');
     }
 
     this.sharedDirectories.set(id, directory);
@@ -1074,11 +1072,10 @@ class SharedDirectoryManager {
     return [id, directory.getDirectoryName()];
   }
 
-  async unshareDirectory(directoryId: number) {
-    try {
-      this.sharedDirectories.delete(directoryId);
-      this.device_id.release(directoryId);
-    } catch {
+  unshareDirectory(directoryId: number): void {
+    const del = this.sharedDirectories.delete(directoryId);
+    const rel = this.device_id.release(directoryId);
+    if (!(del && rel)) {
       this.logger.warn(
         `Attempted to unshare invalid directory id: ${directoryId}`
       );
@@ -1096,36 +1093,31 @@ class SharedDirectoryManager {
 }
 
 class Identifiers {
+  private free: Array<number>;
   private leased: Set<number>;
-  private next: number;
 
-  constructor(
-    private start: number,
-    private end: number
-  ) {
+  constructor(start: number, end: number) {
+    // Initialize the free list of identifiers
     this.leased = new Set();
-    this.next = start;
+    this.free = Array.from(
+      { length: end - start + 1 },
+      (_, idx) => idx + start
+    );
   }
 
   acquire(): number | undefined {
-    const total = this.end - this.start + 1;
-    for (let attempts = 0; attempts < total; attempts++) {
-      const id = this.next;
-      this.next = this.next >= this.end ? this.start : this.next + 1;
-      if (!this.leased.has(id)) {
-        this.leased.add(id);
-        return id;
-      }
+    const identifier = this.free.shift();
+    if (identifier != undefined) {
+      this.leased.add(identifier);
     }
-    console.error('No identifiers available.');
-    return undefined;
+    return identifier;
   }
 
-  release(id: number): void {
-    if (!this.leased.has(id)) {
-      console.error(`Identifier ${id} is not currently leased.`);
-      return;
+  release(id: number): boolean {
+    if (this.leased.delete(id)) {
+      this.free.push(id);
+      return true;
     }
-    this.leased.delete(id);
+    return false;
   }
 }
