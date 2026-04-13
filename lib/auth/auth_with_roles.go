@@ -6730,10 +6730,18 @@ func (a *ServerWithRoles) DeleteMFADeviceSync(ctx context.Context, req *proto.De
 
 // IsMFARequired queries whether MFA is required for the specified target.
 func (a *ServerWithRoles) IsMFARequired(ctx context.Context, req *proto.IsMFARequiredRequest) (*proto.IsMFARequiredResponse, error) {
+	unscopedCtx := &a.context
+	isUnscoped := true
+	if a.scopedContext != nil {
+		unscopedCtx, isUnscoped = a.scopedContext.UnscopedContext()
+	}
 	// Check if MFA is required for admin actions. We don't currently have
 	// a reason to check the name of the admin action in question.
 	if _, ok := req.Target.(*proto.IsMFARequiredRequest_AdminAction); ok {
-		if a.context.AdminActionAuthState == authz.AdminActionAuthNotRequired {
+		if !isUnscoped {
+			return nil, trace.AccessDenied("admin actions are not supported for scoped identities")
+		}
+		if unscopedCtx.AdminActionAuthState == authz.AdminActionAuthNotRequired {
 			return &proto.IsMFARequiredResponse{
 				Required:    false,
 				MFARequired: proto.MFARequired_MFA_REQUIRED_NO,
@@ -6746,14 +6754,22 @@ func (a *ServerWithRoles) IsMFARequired(ctx context.Context, req *proto.IsMFAReq
 		}
 	}
 
-	// Other than for admin action targets, IsMFARequired should only be called by users.
-	if !authz.IsLocalOrRemoteUser(a.context) {
-		return nil, trace.AccessDenied("only a user role can call IsMFARequired, got %T", a.context.Checker)
+	if isUnscoped {
+		// Other than for admin action targets, IsMFARequired should only be called by users.
+		if !authz.IsLocalOrRemoteUser(*unscopedCtx) {
+			return nil, trace.AccessDenied("only a user role can call IsMFARequired, got %T", unscopedCtx.Checker)
+		}
+	} else {
+		// Scoped identities do not support remote users, so we do a simpler check here
+		_, isLocal := a.scopedContext.Identity.(authz.LocalUser)
+		if !isLocal {
+			return nil, trace.AccessDenied("only a user role can call IsMFARequired, got %T", a.scopedContext.Identity)
+		}
 	}
 
 	// Certain hardware-key based private key policies are treated as MFA verification,
 	// except for app sessions which can only be attested with the key policy "web_session".
-	if a.context.Identity.GetIdentity().PrivateKeyPolicy.MFAVerified() {
+	if a.getIdentity().PrivateKeyPolicy.MFAVerified() {
 		if _, isAppReq := req.Target.(*proto.IsMFARequiredRequest_App); !isAppReq {
 			return &proto.IsMFARequiredResponse{
 				Required:    false,
@@ -6762,7 +6778,7 @@ func (a *ServerWithRoles) IsMFARequired(ctx context.Context, req *proto.IsMFAReq
 		}
 	}
 
-	return a.authServer.isMFARequired(ctx, a.context.Checker, req)
+	return a.authServer.isMFARequired(ctx, cmp.Or(a.scopedContext, authz.ScopedContextFromUnscopedContext(unscopedCtx)), req)
 }
 
 // SearchEvents allows searching audit events with pagination support.
