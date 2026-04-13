@@ -6778,7 +6778,11 @@ func (a *ServerWithRoles) IsMFARequired(ctx context.Context, req *proto.IsMFAReq
 		}
 	}
 
-	return a.authServer.isMFARequired(ctx, cmp.Or(a.scopedContext, authz.ScopedContextFromUnscopedContext(unscopedCtx)), req)
+	scopedCtx := a.scopedContext
+	if isUnscoped {
+		scopedCtx = authz.ScopedContextFromUnscopedContext(unscopedCtx)
+	}
+	return a.authServer.isMFARequired(ctx, scopedCtx, req)
 }
 
 // SearchEvents allows searching audit events with pagination support.
