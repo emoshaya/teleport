@@ -2482,16 +2482,6 @@ type clusterSession struct {
 	sendErrStatus func(status *kubeerrors.StatusError) error
 }
 
-func (s *clusterSession) LockTargets() []types.LockTarget {
-	unscopedCtx, isUnscoped := s.authContext.UnscopedContext()
-	if !isUnscoped {
-		// scoped identities don't support lock targets
-		return []types.LockTarget{}
-	}
-	return unscopedCtx.LockTargets()
-
-}
-
 // close cancels the session context and related connection contexts.
 func (s *clusterSession) close() {
 	s.sessionCancel(io.EOF)

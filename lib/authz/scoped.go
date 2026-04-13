@@ -199,3 +199,22 @@ func (s *ScopedContext) GetDisconnectCertExpiry(authPref readonly.AuthPreference
 	// Otherwise, return the current certificates expiration
 	return identity.Expires
 }
+
+// LockTargets returns a list of LockTargets inferred from the context's identity.
+// If the context is unscoped, this list will be inferred from both the Identity and
+// the UnmappedIdentity. If the context is scoped, this will only be inferred from the
+// Identity.
+func (s *ScopedContext) LockTargets() []types.LockTarget {
+	if s.unscopedContext != nil {
+		return s.unscopedContext.LockTargets()
+	}
+
+	lockTargets := services.LockTargetsFromTLSIdentity(s.Identity.GetIdentity())
+	if r, ok := s.Identity.(BuiltinRole); ok {
+		lockTargets = append(lockTargets,
+			types.LockTarget{ServerID: r.GetServerID()},
+			types.LockTarget{ServerID: r.Identity.Username},
+		)
+	}
+	return lockTargets
+}
