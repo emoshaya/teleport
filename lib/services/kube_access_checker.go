@@ -33,11 +33,11 @@ type KubeAccessChecker struct {
 }
 
 // CheckAccessToCluster checks access to a kube cluster.
-func (c *KubeAccessChecker) CheckAccessToCluster(target types.KubeCluster, state AccessState) error {
+func (c *KubeAccessChecker) CheckAccessToCluster(target types.KubeCluster, state AccessState, matchers ...RoleMatcher) error {
 	if !c.checker.isScoped() {
-		return c.checker.unscopedChecker.CheckAccess(target, state)
+		return c.checker.unscopedChecker.CheckAccess(target, state, matchers...)
 	}
-	return c.checker.scopedCompatChecker.CheckAccess(target, state)
+	return c.checker.scopedCompatChecker.CheckAccess(target, state, matchers...)
 }
 
 // CanAccessCluster checks whether read access to the specified kube server is possible without
@@ -56,4 +56,13 @@ func (c *KubeAccessChecker) GetGroupsAndUsers(ttl time.Duration, overrideTTL boo
 	}
 
 	return c.checker.scopedCompatChecker.CheckKubeGroupsAndUsers(ttl, overrideTTL, matchers...)
+}
+
+// GetResources returns the kube resources that are permitted for access.
+func (c *KubeAccessChecker) GetResources(target types.KubeCluster) (allowed []types.KubernetesResource, denied []types.KubernetesResource) {
+	if !c.checker.isScoped() {
+		return c.checker.unscopedChecker.GetKubeResources(target)
+	}
+
+	return c.checker.scopedCompatChecker.GetKubeResources(target)
 }
