@@ -232,7 +232,7 @@ func TestGetServerInfo(t *testing.T) {
 	}
 
 	t.Run("GetServerInfo gets listener addr with PublicAddr unset", func(t *testing.T) {
-		kubeServer, err := srv.GetServerInfo("kube-cluster")
+		kubeServer, err := srv.GetServerInfo(t.Context(), "kube-cluster")
 		require.NoError(t, err)
 		require.Equal(t, listener.Addr().String(), kubeServer.GetHostname())
 	})
@@ -240,7 +240,7 @@ func TestGetServerInfo(t *testing.T) {
 	t.Run("GetServerInfo gets correct public addr with PublicAddr set", func(t *testing.T) {
 		srv.TLSServerConfig.ForwarderConfig.PublicAddr = "k8s.example.com"
 
-		kubeServer, err := srv.GetServerInfo("kube-cluster")
+		kubeServer, err := srv.GetServerInfo(t.Context(), "kube-cluster")
 		require.NoError(t, err)
 		require.Equal(t, "k8s.example.com", kubeServer.GetHostname())
 	})
