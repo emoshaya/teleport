@@ -269,7 +269,7 @@ func TestRunAWSRolesAnywherProfileSyncer(t *testing.T) {
 
 			require.Len(t, serverClient.appServers, 1)
 			appServer := serverClient.appServers[0]
-			require.Equal(t, "ExampleProfile-test-integration", appServer.GetName())
+			require.Equal(t, "exampleprofile-test-integration", appServer.GetName())
 			require.Equal(t, "123456789012", appServer.GetApp().GetAWSAccountID())
 			require.True(t, appServer.GetApp().GetAWSRolesAnywhereAcceptRoleSessionName())
 			require.Equal(t, "arn:aws:rolesanywhere:eu-west-2:123456789012:profile/uuid1", appServer.GetApp().GetAWSRolesAnywhereProfileARN())
@@ -319,7 +319,7 @@ func TestRunAWSRolesAnywherProfileSyncer(t *testing.T) {
 
 			require.Len(t, serverClient.appServers, 1)
 			appServer := serverClient.appServers[0]
-			require.Equal(t, "ProfileCustomName", appServer.GetName())
+			require.Equal(t, "profilecustomname", appServer.GetName())
 			require.Equal(t, "123456789012", appServer.GetApp().GetAWSAccountID())
 			require.True(t, appServer.GetApp().GetAWSRolesAnywhereAcceptRoleSessionName())
 			require.Equal(t, "arn:aws:rolesanywhere:eu-west-2:123456789012:profile/uuid1", appServer.GetApp().GetAWSRolesAnywhereProfileARN())
@@ -390,7 +390,7 @@ func TestRunAWSRolesAnywherProfileSyncer(t *testing.T) {
 				trustAnchor:   "arn:aws-us-gov:rolesanywhere:us-gov-west-1:123456789012:trust-anchor/ExampleTrustAnchor",
 				roleARN:       "arn:aws-us-gov:iam::123456789012:role/SyncRole",
 				expectedURI:   constants.AWSUSGovConsoleURL,
-				expectedAppID: "GovProfile-govcloud-integration",
+				expectedAppID: "govprofile-govcloud-integration",
 			},
 			{
 				name:          "china",
@@ -401,7 +401,7 @@ func TestRunAWSRolesAnywherProfileSyncer(t *testing.T) {
 				trustAnchor:   "arn:aws-cn:rolesanywhere:cn-north-1:123456789012:trust-anchor/ExampleTrustAnchor",
 				roleARN:       "arn:aws-cn:iam::123456789012:role/SyncRole",
 				expectedURI:   constants.AWSCNConsoleURL,
-				expectedAppID: "ChinaProfile-china-integration",
+				expectedAppID: "chinaprofile-china-integration",
 			},
 		} {
 			t.Run(tt.name, func(t *testing.T) {

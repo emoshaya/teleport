@@ -95,14 +95,46 @@ type ApplicationsInternal interface {
 
 // ValidateApp validates the Application resource.
 func ValidateApp(app types.Application, proxyGetter ProxyGetter) error {
-	// If no public address is set, there's nothing to validate.
+	// TODO(julia): Remove auto-lowercase once all agents include the
+	// lowercase fix in convertProfile and IdentityCenterAccountToAppServer.
+	// This exists to avoid breaking rolling upgrades where auth upgrades
+	// before agents - old agents may still send mixed-case app names.
+	if lowered := strings.ToLower(app.GetName()); lowered != app.GetName() {
+		app.SetName(lowered)
+	}
+
+	// Validate that the app name is a valid DNS subdomain (RFC 1123). App
+	// names become subdomains (appName.proxyHost), so each label must be
+	// lowercase alphanumeric or hyphens. Dots are allowed because some
+	// integrations (e.g. AWS OIDC) use dotted names like "env.prod".
+	if errs := validation.IsDNS1123Subdomain(app.GetName()); len(errs) > 0 {
+		return trace.BadParameter("application name %q must be a valid DNS name (lowercase alphanumeric, '-', or '.', must start and end with alphanumeric, max 253 chars)", app.GetName())
+	}
+
+	// If no public address is set, there's nothing else to validate.
 	if app.GetPublicAddr() == "" {
 		return nil
 	}
 
-	// The app's spec has already been validated in CheckAndSetDefaults, so we can assume the public address is a valid
-	// address. The remainder of this function focuses on detecting conflicts with proxy public addresses because the
-	// proxy addresses are not part of the app spec and need to be fetched separately.
+	addr := app.GetPublicAddr()
+	// Reject public_addr values that contain a URI scheme.
+	if strings.Contains(addr, "://") {
+		return trace.BadParameter("application %q public_addr %q must not contain a URI scheme; use a bare hostname", app.GetName(), addr)
+	}
+	// Reject public_addr values that contain a port.
+	if _, _, err := net.SplitHostPort(addr); err == nil {
+		return trace.BadParameter("application %q public_addr %q must not contain a port, applications will be available on the same port as the web proxy", app.GetName(), addr)
+	}
+	// Reject public_addr values that are IP addresses, including bracketed
+	// IPv6 like [::1].
+	stripped := strings.TrimPrefix(strings.TrimSuffix(addr, "]"), "[")
+	if net.ParseIP(stripped) != nil {
+		return trace.BadParameter("application %q public_addr %q must not be an IP address, Teleport Application Access uses DNS names for routing", app.GetName(), addr)
+	}
+
+	// The checks above have rejected public addresses with URI schemes, ports,
+	// and IP addresses. The remainder of this function detects conflicts with
+	// proxy public addresses, which require fetching proxy state separately.
 	appAddr, err := utils.ParseAddr(app.GetPublicAddr())
 	if err != nil {
 		return trace.Wrap(err)
@@ -360,9 +392,9 @@ func getAppName(serviceName, namespace, clusterName, portName, nameAnnotation st
 			name = fmt.Sprintf("%s-%s", name, portName)
 		}
 
-		if len(validation.IsDNS1035Label(name)) > 0 {
+		if len(validation.IsDNS1123Label(name)) > 0 {
 			return "", trace.BadParameter(
-				"application name %q must be a lower case valid DNS subdomain: https://goteleport.com/docs/enroll-resources/application-access/guides/connecting-apps/#application-name", name)
+				"application name %q must be a valid DNS label (lowercase alphanumeric or '-', must start and end with alphanumeric, max 63 chars): https://goteleport.com/docs/enroll-resources/application-access/guides/connecting-apps/#application-name", name)
 		}
 
 		return name, nil

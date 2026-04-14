@@ -552,7 +552,8 @@ func convertProfile(params AWSRolesAnywhereProfileSyncerParams, profile *integra
 		}
 	}
 
-	appURL := utils.DefaultAppPublicAddr(strings.ToLower(applicationName), proxyPublicAddr)
+	applicationName = strings.ToLower(applicationName)
+	appURL := utils.DefaultAppPublicAddr(applicationName, proxyPublicAddr)
 
 	labels[types.AWSAccountIDLabel] = parsedProfileARN.AccountID
 	labels[constants.AWSAccountIDLabel] = parsedProfileARN.AccountID

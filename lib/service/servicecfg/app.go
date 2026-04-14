@@ -19,7 +19,9 @@
 package servicecfg
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -175,24 +177,33 @@ func (a *App) CheckAndSetDefaults() error {
 			return trace.BadParameter("missing application %q URI", a.Name)
 		}
 	}
-	// Check if the application name is a valid subdomain. Don't allow names that
-	// are invalid subdomains because for trusted clusters the name is used to
-	// construct the domain that the application will be available at.
-	if errs := validation.IsDNS1035Label(a.Name); len(errs) > 0 {
-		return trace.BadParameter("application name %q must be a lower case valid DNS subdomain: https://goteleport.com/docs/enroll-resources/application-access/guides/connecting-apps/#application-name", a.Name)
+	// Auto-lowercase the app name to avoid crashing on uppercase names.
+	// Log a warning so operators know to update their config.
+	// CheckAndSetDefaults has no context parameter, so context.TODO is used.
+	if name := strings.ToLower(a.Name); name != a.Name {
+		slog.WarnContext(context.TODO(), "Application name contains uppercase letters, using lowercase instead. Update your configuration to use the lowercase name.", "original", a.Name, "lowercase", name)
+		a.Name = name
+	}
+	// Check if the application name is a valid subdomain (RFC 1123). App names
+	// become subdomains (appName.proxyHost), so they must comply.
+	if errs := validation.IsDNS1123Label(a.Name); len(errs) > 0 {
+		return trace.BadParameter("application name %q must be a valid DNS label (lowercase alphanumeric or '-', must start and end with alphanumeric, max 63 chars): https://goteleport.com/docs/enroll-resources/application-access/guides/connecting-apps/#application-name", a.Name)
 	}
 	// Parse and validate URL.
 	if _, err := url.Parse(a.URI); err != nil {
 		return trace.BadParameter("application %q URI invalid: %v", a.Name, err)
 	}
-	// If a port was specified or an IP address was provided for the public
-	// address, return an error.
+	// Validate public_addr is a bare DNS hostname - no scheme, port, or IP.
 	if a.PublicAddr != "" {
-		if _, _, err := net.SplitHostPort(a.PublicAddr); err == nil {
-			return trace.BadParameter("application %q public_addr %q can not contain a port, applications will be available on the same port as the web proxy", a.Name, a.PublicAddr)
+		if strings.Contains(a.PublicAddr, "://") {
+			return trace.BadParameter("application %q public_addr %q must not contain a URI scheme; use a bare hostname", a.Name, a.PublicAddr)
 		}
-		if net.ParseIP(a.PublicAddr) != nil {
-			return trace.BadParameter("application %q public_addr %q can not be an IP address, Teleport Application Access uses DNS names for routing", a.Name, a.PublicAddr)
+		if _, _, err := net.SplitHostPort(a.PublicAddr); err == nil {
+			return trace.BadParameter("application %q public_addr %q must not contain a port, applications will be available on the same port as the web proxy", a.Name, a.PublicAddr)
+		}
+		stripped := strings.TrimPrefix(strings.TrimSuffix(a.PublicAddr, "]"), "[")
+		if net.ParseIP(stripped) != nil {
+			return trace.BadParameter("application %q public_addr %q must not be an IP address, Teleport Application Access uses DNS names for routing", a.Name, a.PublicAddr)
 		}
 	}
 	// Mark the app as coming from the static configuration.

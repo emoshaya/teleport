@@ -19,6 +19,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/gravitational/trace"
 
@@ -243,6 +244,13 @@ func IdentityCenterAccountToAppServer(acct *identitycenterv1.Account) *types.App
 		}
 	}
 
+	// StartUrl contains a scheme (e.g. "https://start.example.com/start").
+	// PublicAddr must be a bare hostname, so strip the scheme and path.
+	publicAddr := acct.Spec.StartUrl
+	if u, err := url.Parse(publicAddr); err == nil && u.Host != "" {
+		publicAddr = u.Host
+	}
+
 	appServer := &types.AppServerV3{
 		Kind:     types.KindAppServer,
 		SubKind:  types.KindIdentityCenterAccount,
@@ -256,7 +264,7 @@ func IdentityCenterAccountToAppServer(acct *identitycenterv1.Account) *types.App
 				Metadata: types.Metadata153ToLegacy(acct.Metadata),
 				Spec: types.AppSpecV3{
 					URI:        acct.Spec.StartUrl,
-					PublicAddr: acct.Spec.StartUrl,
+					PublicAddr: publicAddr,
 					AWS: &types.AppAWS{
 						ExternalID: acct.Spec.Id,
 					},

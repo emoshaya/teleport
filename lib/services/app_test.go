@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -182,6 +183,89 @@ func TestValidateApp(t *testing.T) {
 	}
 }
 
+func TestValidateAppName(t *testing.T) {
+	proxyGetter := &mockProxyGetter{addrs: []string{"proxy.example.com:443"}}
+
+	makeApp := func(t *testing.T, name, publicAddr string) types.Application {
+		t.Helper()
+		spec := types.AppSpecV3{URI: "http://localhost:8080"}
+		if publicAddr != "" {
+			spec.PublicAddr = publicAddr
+		}
+		app, err := types.NewAppV3(types.Metadata{Name: name}, spec)
+		require.NoError(t, err)
+		return app
+	}
+
+	tests := []struct {
+		name       string
+		appName    string
+		publicAddr string
+		wantErr    string
+	}{
+		{name: "valid lowercase", appName: "myapp"},
+		{name: "valid with hyphen", appName: "my-app"},
+		{name: "valid leading digit", appName: "1stapp"},
+		{name: "valid all digits", appName: "123"},
+		{name: "valid dotted name", appName: "env.prod"},
+		{name: "auto-lowercase uppercase", appName: "MyApp"},
+		{name: "reject underscore", appName: "my_app", wantErr: "must be a valid DNS name"},
+		{name: "accept 63-char label", appName: strings.Repeat("a", 63)},
+		{name: "reject too long", appName: strings.Repeat("a", 254), wantErr: "must be a valid DNS name"},
+		{name: "auto-lowercase without public_addr", appName: "MyApp", publicAddr: ""},
+		{name: "accept single char", appName: "a"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := makeApp(t, tt.appName, tt.publicAddr)
+			err := ValidateApp(app, proxyGetter)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateAppPublicAddr(t *testing.T) {
+	proxyGetter := &mockProxyGetter{addrs: []string{"proxy.example.com:443"}}
+
+	makeApp := func(t *testing.T, publicAddr string) types.Application {
+		t.Helper()
+		app, err := types.NewAppV3(types.Metadata{Name: "app"}, types.AppSpecV3{URI: "http://localhost:8080", PublicAddr: publicAddr})
+		require.NoError(t, err)
+		return app
+	}
+
+	tests := []struct {
+		name    string
+		addr    string
+		wantErr string
+	}{
+		{name: "bare hostname", addr: "app.example.com"},
+		{name: "reject scheme http", addr: "http://foo.bar", wantErr: "must not contain a URI scheme"},
+		{name: "reject scheme https with port", addr: "https://foo.bar:443", wantErr: "must not contain a URI scheme"},
+		{name: "reject port", addr: "foo.bar:443", wantErr: "must not contain a port"},
+		{name: "reject IPv4", addr: "192.168.1.1", wantErr: "must not be an IP address"},
+		{name: "reject IPv6", addr: "::1", wantErr: "must not be an IP address"},
+		{name: "reject bracketed IPv6", addr: "[::1]", wantErr: "must not be an IP address"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := makeApp(t, tt.addr)
+			err := ValidateApp(app, proxyGetter)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // mockProxyGetter is a test implementation of ProxyGetter.
 type mockProxyGetter struct {
 	addrs []string
@@ -316,6 +400,13 @@ func TestGetAppName(t *testing.T) {
 			portName:    "http",
 			annotation:  "overridden*name",
 			wantErr:     "s",
+		},
+		{
+			serviceName: "service4",
+			namespace:   "ns4",
+			clusterName: "cluster4",
+			annotation:  "1stapp",
+			expected:    "1stapp",
 		},
 	}
 
