@@ -163,13 +163,14 @@ $ tctl sso configure saml --preset ad \
   > azure-connector.yaml
 ```
 
-In the example above:
+Replace the following values in the example above:
 
-- `--entity-descriptor` specifies the app federation metadata URL saved in the
-  previous step.
-- Each `--attributes-to-roles` specifies the name of the schema definition for groups,
-  groups, the UUID of an AD group, and the Teleport role that members of the group
-  will be assigned.
+| Placeholder | Description |
+|-------------|-------------|
+| `<Directory ID>` | Your Azure AD tenant (directory) ID. |
+| `<App ID>` | The application ID of the Azure AD enterprise app. The `--entity-descriptor` flag specifies the app federation metadata URL saved in the previous step. |
+| <Var name="mapping_1"/> | The first group-to-role mapping in the format `http://schemas.microsoft.com/ws/2008/06/identity/claims/groups,<group-object-id>,<teleport-role>`. Each `--attributes-to-roles` flag specifies the schema definition name for groups, the UUID of an AD group, and the Teleport role that members of the group will be assigned. For example: `http://schemas.microsoft.com/ws/2008/06/identity/claims/groups,b9b12345-1234-1234-1234-123456789012,auditor,editor`. |
+| <Var name="mapping_2"/> | A second group-to-role mapping in the same format. For example: `http://schemas.microsoft.com/ws/2008/06/identity/claims/groups,a1a09876-9876-9876-9876-987654321098,access`. Add or remove `--attributes-to-roles` flags as needed for each group. |
 
 The file `azure-connector.yaml` should now resemble the following:
 
