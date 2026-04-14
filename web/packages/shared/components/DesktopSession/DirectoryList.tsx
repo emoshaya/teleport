@@ -55,6 +55,7 @@ export function SharedDirectoryList({
         disabled: !canSharedDirectories,
         // square highlight instead of default circle
         css: 'border-radius: 0',
+        title: 'Share Directories',
       }}
       // Right align the menu with the icon
       menuProps={{
@@ -73,8 +74,8 @@ export function SharedDirectoryList({
           : 'Share local directories with the Desktop'
       }
     >
-      <Container>
-        <Stack gap={3} fullWidth>
+      <Container data-testid="shared-directory-menu">
+        <Stack gap={3} fullWidth onClick={e => e.stopPropagation()}>
           {/* Header/Share Button */}
           {shareDirectoryButton(sharedDirectories.length, onAddSharedDirectory)}
 
@@ -134,8 +135,15 @@ function directoryEntry(
   }
 
   return (
-    <Flex justifyContent="space-between" alignItems="center">
-      <Text fontSize={2}>{name}</Text>
+    <Flex
+      justifyContent="space-between"
+      alignItems="center"
+      data-testid={`direntry-${id}`}
+      key={id}
+    >
+      <Text data-testid="dirname" fontSize={2}>
+        {name}
+      </Text>
       <HoverTooltip placement="bottom" tipContent={hoverText}>
         <Flex flexShrink={0}>
           <ButtonSecondary
@@ -177,6 +185,7 @@ function shareDirectoryButton(directoryCount: number, onClick: () => void) {
       <Flex justifyContent="space-between" alignItems="center">
         {dropdownHeader(directoryCount)}
         <ButtonPrimary
+          title="Share a directory"
           size="small"
           onClick={onClick}
           compact={true}
