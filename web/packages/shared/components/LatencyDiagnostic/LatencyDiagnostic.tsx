@@ -100,7 +100,7 @@ export function LatencyDiagnostic({
 
   return (
     <MenuIcon
-      Icon={(props) => <Icons.Wifi {...props} size="large" />}      
+      Icon={props => <Icons.Wifi {...props} size="large" />}
       tooltip="Network Connection"
       buttonIconProps={{
         color: colors.total,

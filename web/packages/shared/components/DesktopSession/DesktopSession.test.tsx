@@ -24,13 +24,12 @@ import 'jest-canvas-mock';
 import { act } from 'react';
 
 import { render } from 'design/utils/testing';
-import { Envelope, PNGFrame } from 'gen-proto-ts/teleport/desktop/v1/tdpb_pb';
+import { Envelope } from 'gen-proto-ts/teleport/desktop/v1/tdpb_pb';
 import { makeSuccessAttempt } from 'shared/hooks/useAsync';
 import {
   MessageType,
   selectDirectoryInBrowser,
   SharedDirectoryAccess,
-  TdpbCodec,
   TdpClient,
 } from 'shared/libs/tdp';
 import { TdpTransport } from 'shared/libs/tdp/client';
@@ -255,7 +254,7 @@ test('directory sharing menu', async () => {
 
   // Clicking the eject button unshares the directory and removes
   // it from the menu.
-  expect(directories[0].ejectButton).not.toBeDisabled();
+  expect(directories[0].ejectButton).toBeEnabled();
   await userEvent.click(directories[0].ejectButton);
 
   // Only one should remain

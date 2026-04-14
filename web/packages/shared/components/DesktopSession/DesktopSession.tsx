@@ -246,12 +246,12 @@ export function DesktopSession({
     if (!shouldConnect) {
       return;
     }
-    
+
     connect({
       keyboardLayout,
       screenSpec: canvasRendererRef.current.getSize(),
-    })
-    
+    });
+
     return () => {
       client.shutdown();
     };

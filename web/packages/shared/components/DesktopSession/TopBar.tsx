@@ -22,8 +22,8 @@ import { Flex, Text, TopNav } from 'design';
 import { Clipboard } from 'design/Icon';
 import { HoverTooltip } from 'design/Tooltip';
 import {
-  SharedDirectoryList,
   DirectoryItem,
+  SharedDirectoryList,
 } from 'shared/components/DesktopSession/DirectoryList';
 import { LatencyDiagnostic } from 'shared/components/LatencyDiagnostic';
 import type { ToastNotificationItem } from 'shared/components/ToastNotification';
@@ -81,7 +81,7 @@ export default function TopBar(props: Props) {
               onRemoveSharedDirectory={onRemoveSharedDirectory}
               onAddSharedDirectory={onAddSharedDirectory}
               canRemoveSharedDirectory={canRemoveSharedDirectory}
-              canSharedDirectories={canShareDirectory}              
+              canSharedDirectories={canShareDirectory}
             />
             {/*<FolderShared style={primaryOnTrue(isSharingDirectory)} />*/}
           </HoverTooltip>

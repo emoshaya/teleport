@@ -16,7 +16,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { dir } from 'console';
 import { EventEmitter } from 'events';
 
 import { useEffect } from 'react';
@@ -626,8 +625,6 @@ export class TdpClient extends EventEmitter<EventMap> {
     if (!sharedDirectory) {
       return;
     }
-    sharedDirectory;
-    ack.directoryId;
 
     if (ack.errCode !== SharedDirectoryErrCode.Nil) {
       // A failure in the acknowledge message means the directory
@@ -655,8 +652,6 @@ export class TdpClient extends EventEmitter<EventMap> {
     if (!sharedDirectory) {
       return;
     }
-    sharedDirectory;
-    req.directoryId;
 
     try {
       const info = await sharedDirectory.stat(path);

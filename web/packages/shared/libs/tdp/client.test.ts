@@ -18,7 +18,6 @@
 
 import { Envelope } from 'gen-proto-ts/teleport/desktop/v1/tdpb_pb';
 
-import { forEach } from '../ironrdp/mock_ironrdp';
 import { TdpClient, TdpTransport } from './client';
 import { SharedDirectoryAccess } from './sharedDirectoryAccess';
 

@@ -359,7 +359,7 @@ export type LatencyStats = {
 export type ServerHello = {
   clipboardSupport: boolean;
   activationEvent: RdpConnectionActivated;
-  directoryRemovalSupport: boolean
+  directoryRemovalSupport: boolean;
 };
 
 export type ClientHello = {
@@ -451,7 +451,9 @@ export interface Codec {
   encodeSharedDirectoryTruncateResponse(
     resp: SharedDirectoryTruncateResponse
   ): Message;
-  encodeSharedDirectoryRemoveRequest(req: SharedDirectoryRemoveRequest): Message;
+  encodeSharedDirectoryRemoveRequest(
+    req: SharedDirectoryRemoveRequest
+  ): Message;
 }
 
 export type DecodedMessage =
@@ -636,7 +638,8 @@ export class TdpbCodec implements Codec {
           data: {
             activationEvent: envelope.payload.serverHello.activationSpec,
             clipboardSupport: envelope.payload.serverHello.clipboardEnabled,
-            directoryRemovalSupport: envelope.payload.serverHello.directoryRemoveSupported, 
+            directoryRemovalSupport:
+              envelope.payload.serverHello.directoryRemoveSupported,
           },
         };
       case 'pngFrame':
@@ -1075,11 +1078,13 @@ export class TdpbCodec implements Codec {
     });
   }
 
-  encodeSharedDirectoryRemoveRequest(req: SharedDirectoryRemoveRequest): Message {
+  encodeSharedDirectoryRemoveRequest(
+    req: SharedDirectoryRemoveRequest
+  ): Message {
     return this.marshal({
       oneofKind: 'sharedDirectoryRemove',
       sharedDirectoryRemove: req,
-    })
+    });
   }
 }
 
@@ -1669,10 +1674,12 @@ export class TdpCodec implements Codec {
     return buffer;
   }
 
-  encodeSharedDirectoryRemoveRequest(req: SharedDirectoryRemoveRequest): Message {
+  encodeSharedDirectoryRemoveRequest(): Message {
     // This is a bug. TDP connections should not negotiate shared directory removal
     // with the server, and the client UI should not show directory removal as an option.
-    throw new Error("Legacy TDP codec does not support shared directory removal");
+    throw new Error(
+      'Legacy TDP codec does not support shared directory removal'
+    );
   }
 
   // decodeClipboardData decodes clipboard data
