@@ -184,6 +184,11 @@ func (a *App) CheckAndSetDefaults() error {
 		slog.WarnContext(context.TODO(), "Application name contains uppercase letters, using lowercase instead. Update your configuration to use the lowercase name.", "original", a.Name, "lowercase", name)
 		a.Name = name
 	}
+	// Also lowercase RequiredAppNames entries so they match their
+	// referents after those apps are also lowercased.
+	for i, n := range a.RequiredAppNames {
+		a.RequiredAppNames[i] = strings.ToLower(n)
+	}
 	// Check if the application name is a valid subdomain (RFC 1123). App names
 	// become subdomains (appName.proxyHost), so they must comply.
 	if errs := validation.IsDNS1123Label(a.Name); len(errs) > 0 {

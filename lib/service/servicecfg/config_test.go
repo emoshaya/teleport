@@ -230,6 +230,17 @@ func TestCheckAppAutoLowercase(t *testing.T) {
 	require.Equal(t, "myapp", app.Name)
 }
 
+func TestCheckAppAutoLowercaseRequiredApps(t *testing.T) {
+	app := App{
+		Name:             "MyApp",
+		URI:              "http://localhost",
+		RequiredAppNames: []string{"AnotherApp", "already-lower"},
+	}
+	require.NoError(t, app.CheckAndSetDefaults())
+	require.Equal(t, "myapp", app.Name)
+	require.Equal(t, []string{"anotherapp", "already-lower"}, app.RequiredAppNames)
+}
+
 func TestCheckAppTCPPorts(t *testing.T) {
 	tests := []struct {
 		name     string
