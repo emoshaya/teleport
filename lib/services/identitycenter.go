@@ -247,8 +247,8 @@ func IdentityCenterAccountToAppServer(acct *identitycenterv1.Account) *types.App
 	// StartUrl contains a scheme (e.g. "https://start.example.com/start").
 	// PublicAddr must be a bare hostname, so strip the scheme and path.
 	publicAddr := acct.Spec.StartUrl
-	if u, err := url.Parse(publicAddr); err == nil && u.Host != "" {
-		publicAddr = u.Host
+	if u, err := url.Parse(publicAddr); err == nil && u.Hostname() != "" {
+		publicAddr = u.Hostname()
 	}
 
 	appServer := &types.AppServerV3{
