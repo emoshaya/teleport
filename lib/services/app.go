@@ -102,6 +102,11 @@ func ValidateApp(app types.Application, proxyGetter ProxyGetter) error {
 	if lowered := strings.ToLower(app.GetName()); lowered != app.GetName() {
 		app.SetName(lowered)
 	}
+	// Also lowercase RequiredAppNames so references to other apps stay
+	// consistent after those apps are also lowercased.
+	for i, n := range app.GetRequiredAppNames() {
+		app.GetRequiredAppNames()[i] = strings.ToLower(n)
+	}
 
 	// Validate that the app name is a valid DNS subdomain (RFC 1123). App
 	// names become subdomains (appName.proxyHost), so each label must be

@@ -229,6 +229,17 @@ func TestValidateAppName(t *testing.T) {
 	}
 }
 
+func TestValidateAppLowercasesRequiredAppNames(t *testing.T) {
+	proxyGetter := &mockProxyGetter{addrs: []string{"proxy.example.com:443"}}
+	app, err := types.NewAppV3(types.Metadata{Name: "myapp"}, types.AppSpecV3{
+		URI:              "http://localhost:8080",
+		RequiredAppNames: []string{"AnotherApp", "already-lower"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, ValidateApp(app, proxyGetter))
+	require.Equal(t, []string{"anotherapp", "already-lower"}, app.GetRequiredAppNames())
+}
+
 func TestValidateAppPublicAddr(t *testing.T) {
 	proxyGetter := &mockProxyGetter{addrs: []string{"proxy.example.com:443"}}
 
