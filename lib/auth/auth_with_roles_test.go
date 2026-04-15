@@ -3190,7 +3190,7 @@ func TestKubernetesClusterCRUD_DiscoveryService(t *testing.T) {
 	})
 }
 
-func TestKubeCRUDKubeService(t *testing.T) {
+func TestKubeCRUDFromKubeService(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	srv := newTestTLSServer(t)
@@ -3335,7 +3335,7 @@ func TestKubeCRUDKubeService(t *testing.T) {
 		_, err = unscopedKubeClient.UpsertKubernetesServer(ctx, kubeServer)
 		require.NoError(t, err)
 
-		// unscoped kube service SHOULD NOT be able to upsert a kube server
+		// scoped kube service SHOULD NOT be able to upsert a kube server
 		_, err = scopedKubeClient.UpsertKubernetesServer(ctx, kubeServer)
 		require.Error(t, err)
 		require.True(t, trace.IsAccessDenied(err), "expected access denied error")
@@ -3380,7 +3380,7 @@ func TestKubeCRUDKubeService(t *testing.T) {
 		require.NoError(t, err)
 
 		// scoped kube clients SHOULD NOT be able to delete all kube servers
-		err = scopedKubeClient.DeleteKubernetesServer(ctx, "hostname", "host-id")
+		err = scopedKubeClient.DeleteAllKubernetesServers(ctx)
 		require.Error(t, err)
 		require.True(t, trace.IsAccessDenied(err), "expected access denied error")
 	})
