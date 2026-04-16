@@ -12,7 +12,7 @@ tags:
 This guide explains how to configure PingFederate as a single sign-on
 (SSO) identity provider for Teleport using **OpenID Connect** (OIDC).
 
-Teleport acts as the OIDC client and PingFederate acts as the identity
+Teleport acts as the OIDC client (relying party) and PingFederate acts as the identity
 provider. When a user authenticates, Teleport redirects them to
 PingFederate. PingFederate authenticates the user and returns an ID
 token containing claims. Teleport evaluates the claims against its
@@ -113,18 +113,13 @@ roles.
 
 ## Step 4/7. Determine the issuer URL
 
-Teleport requires the issuer URL published by PingFederate. 
-Open the PingFederate OIDC discovery document in a browser:
+Teleport requires the issuer_url to match the issuer field in your PingFederate configuration exactly.
+Access the PingFederate OIDC discovery document in your browser. This is typically found at:
+`https://<pingfederate-host>/.well-known/openid-configuration`. If your deployment uses a context path, 
+it may be /pf/.well-known/openid-configuration. Locate the "issuer" field in the JSON response.
 
-```code
-https://<pingfederate-host>/pf/.well-known/openid-configuration
-```
-
-Locate the `issuer` field in the response and copy its value exactly,
-including or excluding any trailing slash. For most PingFederate
-deployments this value is `https://<pingfederate-host>/as`, but your
-deployment may differ. You will paste this value into the Teleport OIDC
-connector in a later step.
+Copy this value exactly. Teleport will fail validation if there is any mismatch 
+(such as a missing or extra trailing slash) between this value and your Teleport OIDC connector configuration.
 
 ## Step 5/7. Create Teleport roles
 
