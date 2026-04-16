@@ -86,9 +86,11 @@ func testRDS(t *testing.T) {
 	autoUserFineGrain := "auto_fine_grain_" + randASCII(t) + "@teleport.com"
 	autoUserKeep := "auto_keep_" + randASCII(t) + "@teleport.com"
 	autoUserDrop := "auto_drop_" + randASCII(t) + "@teleport.com"
+	autoUserDropWithReassignment := "auto_drop_reassign_" + randASCII(t) + "@teleport.com"
 	autoUserFineGrain2 := "auto_fine_grain2_" + randASCII(t)
 	autoUserKeep2 := "auto_keep2_" + randASCII(t)
 	autoUserDrop2 := "auto_drop2_" + randASCII(t)
+	autoUserDropWithReassignment2 := "auto_drop_reassign2_" + randASCII(t) + "@teleport.com"
 	autoRole1 := "auto_granted_role1_" + randASCII(t)
 	autoRole2 := "auto_granted_role2_" + randASCII(t)
 
@@ -117,9 +119,11 @@ func testRDS(t *testing.T) {
 		withUserRole(t, autoUserFineGrain, "db-auto-user-fine-grain", dbAutoUserFineGrainRole),
 		withUserRole(t, autoUserKeep, "db-auto-user-keeper", makeAutoUserKeepRoleSpec(autoRole1, autoRole2)),
 		withUserRole(t, autoUserDrop, "db-auto-user-dropper", makeAutoUserDropRoleSpec(autoRole1, autoRole2)),
+		withUserRole(t, autoUserDropWithReassignment, "db-auto-user-dropper-reassignment", makeAutoUserDropRoleSpec(autoRole1, autoRole2)),
 		withUserRole(t, autoUserFineGrain2, "db-auto-user-fine-grain", dbAutoUserFineGrainRole),
 		withUserRole(t, autoUserKeep2, "db-auto-user-keeper", makeAutoUserKeepRoleSpec(autoRole1, autoRole2)),
 		withUserRole(t, autoUserDrop2, "db-auto-user-dropper", makeAutoUserDropRoleSpec(autoRole1, autoRole2)),
+		withUserRole(t, autoUserDropWithReassignment2, "db-auto-user-dropper-reassignment", makeAutoUserDropRoleSpec(autoRole1, autoRole2)),
 	}
 	cluster := makeDBTestCluster(t, accessRole, discoveryRole, types.AWSMatcherRDS, opts...)
 
@@ -136,13 +140,17 @@ func testRDS(t *testing.T) {
 
 		// provision new databases with new db admin to have distinct admin names in concurrent test runs.
 		// db1 admin *will not* be a Postgres superuser
+		db1AdminUser := "admin_" + randASCII(t)
 		db1 := cloneDBWithNewAdmin(t, db, &types.DatabaseAdminUser{
-			Name: "admin_" + randASCII(t),
+			Name:             db1AdminUser,
+			ReassignmentUser: db1AdminUser,
 		})
 		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db1))
 		// db2 admin *will* be a Postgres superuser
+		db2AdminUser := "su_admin_" + randASCII(t)
 		db2 := cloneDBWithNewAdmin(t, db, &types.DatabaseAdminUser{
-			Name: "su_admin_" + randASCII(t),
+			Name:             db2AdminUser,
+			ReassignmentUser: db2AdminUser,
 		})
 		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db2))
 		waitForDatabases(t, cluster.Process, db1.GetName(), db2.GetName())
@@ -158,9 +166,11 @@ func testRDS(t *testing.T) {
 		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserKeep))
 		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserDrop))
 		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserFineGrain))
+		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserDropWithReassignment))
 		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserKeep2))
 		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserDrop2))
 		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserFineGrain2))
+		cleanupDB(t, ctx, conn, fmt.Sprintf("DROP ROLE IF EXISTS %q", autoUserDropWithReassignment2))
 
 		// create the roles that Teleport will auto assign.
 		for _, r := range [...]string{autoRole1, autoRole2} {
@@ -196,30 +206,34 @@ func testRDS(t *testing.T) {
 
 		autoRolesQuery := fmt.Sprintf("select 1 from %q.%q", testSchema, testTable)
 		for _, test := range []struct {
-			name              string
-			db                types.Database
-			autoUserKeep      string
-			autoUserDrop      string
-			autoUserFineGrain string
+			name                         string
+			db                           types.Database
+			autoUserKeep                 string
+			autoUserDrop                 string
+			autoUserFineGrain            string
+			autoUserDropWithReassignment string
 		}{
 			{
-				name:              "non superuser db admin",
-				db:                db1,
-				autoUserKeep:      autoUserKeep,
-				autoUserDrop:      autoUserDrop,
-				autoUserFineGrain: autoUserFineGrain,
+				name:                         "non superuser db admin",
+				db:                           db1,
+				autoUserKeep:                 autoUserKeep,
+				autoUserDrop:                 autoUserDrop,
+				autoUserFineGrain:            autoUserFineGrain,
+				autoUserDropWithReassignment: autoUserDropWithReassignment,
 			},
 			{
-				name:              "superuser db admin",
-				db:                db2,
-				autoUserKeep:      autoUserKeep2,
-				autoUserDrop:      autoUserDrop2,
-				autoUserFineGrain: autoUserFineGrain2,
+				name:                         "superuser db admin",
+				db:                           db2,
+				autoUserKeep:                 autoUserKeep2,
+				autoUserDrop:                 autoUserDrop2,
+				autoUserFineGrain:            autoUserFineGrain2,
+				autoUserDropWithReassignment: autoUserDropWithReassignment2,
 			},
 		} {
 			autoUserKeep := test.autoUserKeep
 			autoUserDrop := test.autoUserDrop
 			autoUserFineGrain := test.autoUserFineGrain
+			autoUserDropWithReassignment := test.autoUserDropWithReassignment
 			db := test.db
 			t.Run(test.name, func(t *testing.T) {
 				t.Parallel()
@@ -248,6 +262,24 @@ func testRDS(t *testing.T) {
 						query:  autoRolesQuery,
 						afterConnTestFn: func(t *testing.T) {
 							waitForPostgresAutoUserDrop(t, ctx, conn, autoUserDrop)
+						},
+					},
+					"auto user drop with reassignment": {
+						user:   autoUserDropWithReassignment,
+						dbUser: autoUserDropWithReassignment,
+						query:  autoRolesQuery,
+						afterConnTestFn: func(t *testing.T) {
+							// Create test objects as admin and assign to auto-user
+							testTable := "test_reassign_" + randASCII(t)
+							pgMustExec(t, ctx, conn, fmt.Sprintf("CREATE TABLE public.%q (id INT)", testTable))
+							pgMustExec(t, ctx, conn, fmt.Sprintf("ALTER TABLE public.%q OWNER TO %q", testTable, autoUserDropWithReassignment))
+
+							// Wait for user drop and ownership transfer
+							waitForPostgresAutoUserDropWithReassignment(
+								t, ctx, conn, autoUserDropWithReassignment, db.GetAdminUser().ReassignmentUser, testTable)
+
+							// Cleanup
+							pgMustExec(t, ctx, conn, fmt.Sprintf("DROP TABLE IF EXISTS public.%q", testTable))
 						},
 					},
 					"db permissions": {
@@ -771,6 +803,64 @@ func waitForPostgresAutoUserDrop(t *testing.T, ctx context.Context, conn *pgConn
 		}
 		return nil
 	}, autoUserWaitDur, autoUserWaitStep, "waiting for auto user %q to be dropped", user)
+}
+
+func waitForPostgresAutoUserDropWithReassignment(
+	t *testing.T,
+	ctx context.Context,
+	conn *pgConn,
+	autoUser string,
+	reassignmentUser string,
+	testTable string,
+) {
+	t.Helper()
+
+	// First, wait for the user to be dropped
+	waitForSuccess(t, func() error {
+		rows, _ := conn.Query(ctx, "SELECT 1 FROM pg_roles WHERE rolname=$1", autoUser)
+		gotRow := rows.Next()
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return trace.Wrap(err)
+		}
+		if gotRow {
+			return trace.Errorf("user %q should have been dropped automatically after disconnecting", autoUser)
+		}
+		return nil
+	}, autoUserWaitDur, autoUserWaitStep, "waiting for auto user %q to be dropped", autoUser)
+
+	// Verify the test table is now owned by the reassignment user
+	waitForSuccess(t, func() error {
+		rows, _ := conn.Query(ctx, `
+			SELECT u.usename
+			FROM pg_class c
+			JOIN pg_namespace ns ON c.relnamespace = ns.oid
+			LEFT JOIN pg_user u ON c.relowner = u.usesysid
+			WHERE ns.nspname = 'public'
+			  AND c.relname = $1
+			  AND c.relkind = 'r'
+		`, testTable)
+
+		var owner string
+		if rows.Next() {
+			if err := rows.Scan(&owner); err != nil {
+				rows.Close()
+				return trace.Wrap(err)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return trace.Wrap(err)
+		}
+
+		if owner != reassignmentUser {
+			return trace.Errorf("table %q should be owned by %q, but is owned by %q",
+				testTable, reassignmentUser, owner)
+		}
+
+		return nil
+	}, autoUserWaitDur, autoUserWaitStep,
+		"waiting for table %q to be reassigned to %q", testTable, reassignmentUser)
 }
 
 func waitForMySQLAutoUserDeactivate(t *testing.T, conn *mySQLConn, user string) {
