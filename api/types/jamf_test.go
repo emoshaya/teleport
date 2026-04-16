@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package types_test
+package types
 
 import (
 	"testing"
@@ -22,31 +22,29 @@ import (
 	"github.com/gravitational/trace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/gravitational/teleport/api/types"
 )
 
 func TestValidateJamfSpecV1(t *testing.T) {
-	validSpec := &types.JamfSpecV1{
+	validSpec := &JamfSpecV1{
 		Enabled:     true,
 		ApiEndpoint: "https://yourtenant.jamfcloud.com",
 	}
-	validEntry := &types.JamfInventoryEntry{
+	validEntry := &JamfInventoryEntry{
 		FilterRsql:        "", // no filters
 		SyncPeriodPartial: 0,  // default period
 		SyncPeriodFull:    0,  // default period
 		OnMissing:         "", // same as NOOP
 	}
 
-	modify := func(f func(spec *types.JamfSpecV1)) *types.JamfSpecV1 {
-		spec := proto.Clone(validSpec).(*types.JamfSpecV1)
+	modify := func(f func(spec *JamfSpecV1)) *JamfSpecV1 {
+		spec := proto.Clone(validSpec).(*JamfSpecV1)
 		f(spec)
 		return spec
 	}
 
 	tests := []struct {
 		name    string
-		spec    *types.JamfSpecV1
+		spec    *JamfSpecV1
 		wantErr string
 	}{
 		{
@@ -55,14 +53,14 @@ func TestValidateJamfSpecV1(t *testing.T) {
 		},
 		{
 			name: "spec with inventory",
-			spec: &types.JamfSpecV1{
+			spec: &JamfSpecV1{
 				Enabled:     true,
 				ApiEndpoint: "https://yourtenant.jamfcloud.com",
-				Inventory: []*types.JamfInventoryEntry{
+				Inventory: []*JamfInventoryEntry{
 					{
 						FilterRsql:        `general.remoteManagement.managed==true and general.platform=="Mac"`,
-						SyncPeriodPartial: types.Duration(4 * time.Hour),
-						SyncPeriodFull:    types.Duration(48 * time.Hour),
+						SyncPeriodPartial: Duration(4 * time.Hour),
+						SyncPeriodFull:    Duration(48 * time.Hour),
 						OnMissing:         "DELETE",
 					},
 					{
@@ -80,22 +78,22 @@ func TestValidateJamfSpecV1(t *testing.T) {
 		},
 		{
 			name: "api_endpoint invalid",
-			spec: modify(func(spec *types.JamfSpecV1) {
+			spec: modify(func(spec *JamfSpecV1) {
 				spec.ApiEndpoint = "https://%%"
 			}),
 			wantErr: "API endpoint",
 		},
 		{
 			name: "api_endpoint empty hostname",
-			spec: modify(func(spec *types.JamfSpecV1) {
+			spec: modify(func(spec *JamfSpecV1) {
 				spec.ApiEndpoint = "not a valid URL"
 			}),
 			wantErr: "missing hostname",
 		},
 		{
 			name: "inventory nil entry",
-			spec: modify(func(spec *types.JamfSpecV1) {
-				spec.Inventory = []*types.JamfInventoryEntry{
+			spec: modify(func(spec *JamfSpecV1) {
+				spec.Inventory = []*JamfInventoryEntry{
 					nil,
 				}
 			}),
@@ -103,12 +101,12 @@ func TestValidateJamfSpecV1(t *testing.T) {
 		},
 		{
 			name: "inventory sync_partial > sync_full",
-			spec: modify(func(spec *types.JamfSpecV1) {
-				spec.Inventory = []*types.JamfInventoryEntry{
+			spec: modify(func(spec *JamfSpecV1) {
+				spec.Inventory = []*JamfInventoryEntry{
 					validEntry,
 					{
-						SyncPeriodPartial: types.Duration(12 * time.Hour),
-						SyncPeriodFull:    types.Duration(8 * time.Hour),
+						SyncPeriodPartial: Duration(12 * time.Hour),
+						SyncPeriodFull:    Duration(8 * time.Hour),
 					},
 				}
 			}),
@@ -116,8 +114,8 @@ func TestValidateJamfSpecV1(t *testing.T) {
 		},
 		{
 			name: "inventory on_missing invalid",
-			spec: modify(func(spec *types.JamfSpecV1) {
-				spec.Inventory = []*types.JamfInventoryEntry{
+			spec: modify(func(spec *JamfSpecV1) {
+				spec.Inventory = []*JamfInventoryEntry{
 					validEntry,
 					{
 						OnMissing: "BANANA",
@@ -128,23 +126,23 @@ func TestValidateJamfSpecV1(t *testing.T) {
 		},
 		{
 			name: "inventory sync_partial disabled",
-			spec: modify(func(spec *types.JamfSpecV1) {
-				spec.Inventory = []*types.JamfInventoryEntry{
+			spec: modify(func(spec *JamfSpecV1) {
+				spec.Inventory = []*JamfInventoryEntry{
 					validEntry,
 					{
 						SyncPeriodPartial: -1,
-						SyncPeriodFull:    types.Duration(8 * time.Hour),
+						SyncPeriodFull:    Duration(8 * time.Hour),
 					},
 				}
 			}),
 		},
 		{
 			name: "inventory sync_full disabled",
-			spec: modify(func(spec *types.JamfSpecV1) {
-				spec.Inventory = []*types.JamfInventoryEntry{
+			spec: modify(func(spec *JamfSpecV1) {
+				spec.Inventory = []*JamfInventoryEntry{
 					validEntry,
 					{
-						SyncPeriodPartial: types.Duration(12 * time.Hour),
+						SyncPeriodPartial: Duration(12 * time.Hour),
 						SyncPeriodFull:    -1,
 					},
 				}
@@ -152,8 +150,8 @@ func TestValidateJamfSpecV1(t *testing.T) {
 		},
 		{
 			name: "inventory all syncs disabled",
-			spec: modify(func(spec *types.JamfSpecV1) {
-				spec.Inventory = []*types.JamfInventoryEntry{
+			spec: modify(func(spec *JamfSpecV1) {
+				spec.Inventory = []*JamfInventoryEntry{
 					validEntry,
 					{
 						SyncPeriodPartial: 0,
@@ -165,7 +163,7 @@ func TestValidateJamfSpecV1(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := types.ValidateJamfSpecV1(test.spec)
+			err := ValidateJamfSpecV1(test.spec)
 			if test.wantErr == "" {
 				assert.NoError(t, err, "ValidateJamfSpecV1 failed")
 			} else {
@@ -177,14 +175,14 @@ func TestValidateJamfSpecV1(t *testing.T) {
 }
 
 func TestJamfSpecV1UnmarshalJSON(t *testing.T) {
-	want := &types.JamfSpecV1{
+	want := &JamfSpecV1{
 		ApiEndpoint: "https://test.jamfcloud.com",
-		SyncDelay:   types.Duration(6 * time.Hour),
-		Inventory: []*types.JamfInventoryEntry{
+		SyncDelay:   Duration(6 * time.Hour),
+		Inventory: []*JamfInventoryEntry{
 			{
 				FilterRsql:        "general.remoteManagement.managed==true",
-				SyncPeriodPartial: types.Duration(6 * time.Hour),
-				SyncPeriodFull:    types.Duration(24 * time.Hour),
+				SyncPeriodPartial: Duration(6 * time.Hour),
+				SyncPeriodFull:    Duration(24 * time.Hour),
 				OnMissing:         "DELETE",
 				PageSize:          50,
 			},
@@ -227,7 +225,7 @@ func TestJamfSpecV1UnmarshalJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var got types.JamfSpecV1
+			var got JamfSpecV1
 			err := got.UnmarshalJSON([]byte(tt.json))
 			require.NoError(t, err)
 			require.Equal(t, want, &got)
