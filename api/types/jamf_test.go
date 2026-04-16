@@ -15,6 +15,8 @@
 package types
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -231,4 +233,59 @@ func TestJamfSpecV1UnmarshalJSON(t *testing.T) {
 			require.Equal(t, want, &got)
 		})
 	}
+}
+
+func TestJamfKeyRenamesMatchStructTags(t *testing.T) {
+	t.Run("JamfSpecV1", func(t *testing.T) {
+		checkKeyRenames(t, reflect.TypeFor[JamfSpecV1](), jamfSpecV1KeyRenames)
+	})
+	t.Run("JamfInventoryEntry", func(t *testing.T) {
+		checkKeyRenames(t, reflect.TypeFor[JamfInventoryEntry](), jamfInventoryEntryKeyRenames)
+	})
+}
+
+// checkKeyRenames verifies that the given rename map covers all struct fields
+// where the jsonpb camelCase name differs from the encoding/json snake_case
+// name. If a field is missing from the map, the test fails.
+func checkKeyRenames(t *testing.T, structType reflect.Type, renames map[string]string) {
+	t.Helper()
+	for i := range structType.NumField() {
+		f := structType.Field(i)
+		if strings.HasPrefix(f.Name, "XXX_") {
+			continue
+		}
+
+		camelName := protoJSONName(f.Tag.Get("protobuf"))
+		snakeName := structTagJSONName(f.Tag.Get("json"))
+		if camelName == "" || snakeName == "" || snakeName == "-" {
+			continue
+		}
+		if camelName == snakeName {
+			continue
+		}
+
+		assert.Contains(t, renames, camelName,
+			"field %s has jsonpb name %q and json tag name %q but is missing from "+
+				"the key rename map; update the map so UnmarshalJSONPB can handle "+
+				"this field correctly", f.Name, camelName, snakeName)
+	}
+}
+
+// protoJSONName extracts the JSON field name from a protobuf struct tag.
+// For example, from `protobuf:"varint,3,opt,name=sync_delay,json=syncDelay,proto3"`,
+// it returns "syncDelay". Returns "" if no json= option is present.
+func protoJSONName(tag string) string {
+	for part := range strings.SplitSeq(tag, ",") {
+		if v, ok := strings.CutPrefix(part, "json="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// structTagJSONName extracts the field name from a json struct tag.
+// For example, from `json:"sync_delay,omitempty"`, it returns "sync_delay".
+func structTagJSONName(tag string) string {
+	name, _, _ := strings.Cut(tag, ",")
+	return name
 }
