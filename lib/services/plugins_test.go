@@ -91,6 +91,45 @@ func TestUnmarshalPluginUnknownField(t *testing.T) {
 	})
 }
 
+func TestMarshalPluginJamfDurationRoundTrip(t *testing.T) {
+	spec := types.PluginSpecV1{
+		Settings: &types.PluginSpecV1_Jamf{
+			Jamf: &types.PluginJamfSettings{
+				JamfSpec: &types.JamfSpecV1{
+					ApiEndpoint: "https://test.jamfcloud.com",
+					SyncDelay:   types.Duration(6 * time.Hour),
+					Inventory: []*types.JamfInventoryEntry{
+						{
+							FilterRsql:        "general.remoteManagement.managed==true",
+							SyncPeriodPartial: types.Duration(6 * time.Hour),
+							SyncPeriodFull:    types.Duration(24 * time.Hour),
+							OnMissing:         "DELETE",
+							PageSize:          50,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	creds := &types.PluginCredentialsV1{
+		Credentials: &types.PluginCredentialsV1_StaticCredentialsRef{
+			StaticCredentialsRef: &types.PluginStaticCredentialsRef{
+				Labels: map[string]string{"label": "value"},
+			},
+		},
+	}
+
+	plugin := types.NewPluginV1(types.Metadata{Name: "test-jamf"}, spec, creds)
+
+	payload, err := MarshalPlugin(plugin)
+	require.NoError(t, err)
+
+	unmarshaled, err := UnmarshalPlugin(payload)
+	require.NoError(t, err)
+	require.Empty(t, cmp.Diff(plugin, unmarshaled))
+}
+
 func TestMarshalPluginWithStatus(t *testing.T) {
 	spec := types.PluginSpecV1{
 		Settings: &types.PluginSpecV1_SlackAccessPlugin{

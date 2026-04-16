@@ -21,6 +21,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gravitational/trace"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/gravitational/teleport/api/types"
 )
@@ -171,6 +172,65 @@ func TestValidateJamfSpecV1(t *testing.T) {
 				assert.ErrorContains(t, err, test.wantErr, "ValidateJamfSpecV1 error mismatch")
 				assert.True(t, trace.IsBadParameter(err), "ValidateJamfSpecV1 returned non-BadParameter error: %T", err)
 			}
+		})
+	}
+}
+
+func TestJamfSpecV1UnmarshalJSON(t *testing.T) {
+	want := &types.JamfSpecV1{
+		ApiEndpoint: "https://test.jamfcloud.com",
+		SyncDelay:   types.Duration(6 * time.Hour),
+		Inventory: []*types.JamfInventoryEntry{
+			{
+				FilterRsql:        "general.remoteManagement.managed==true",
+				SyncPeriodPartial: types.Duration(6 * time.Hour),
+				SyncPeriodFull:    types.Duration(24 * time.Hour),
+				OnMissing:         "DELETE",
+				PageSize:          50,
+			},
+		},
+	}
+
+	tests := []struct {
+		name string
+		json string
+	}{
+		{
+			name: "camelCase keys (from jsonpb marshal)",
+			json: `{
+				"syncDelay": "6h0m0s",
+				"apiEndpoint": "https://test.jamfcloud.com",
+				"inventory": [{
+					"filterRsql": "general.remoteManagement.managed==true",
+					"syncPeriodPartial": "6h0m0s",
+					"syncPeriodFull": "24h0m0s",
+					"onMissing": "DELETE",
+					"pageSize": 50
+				}]
+			}`,
+		},
+		{
+			name: "snake_case keys (from json struct tags)",
+			json: `{
+				"sync_delay": "6h0m0s",
+				"api_endpoint": "https://test.jamfcloud.com",
+				"inventory": [{
+					"filter_rsql": "general.remoteManagement.managed==true",
+					"sync_period_partial": "6h0m0s",
+					"sync_period_full": "24h0m0s",
+					"on_missing": "DELETE",
+					"page_size": 50
+				}]
+			}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got types.JamfSpecV1
+			err := got.UnmarshalJSON([]byte(tt.json))
+			require.NoError(t, err)
+			require.Equal(t, want, &got)
 		})
 	}
 }
