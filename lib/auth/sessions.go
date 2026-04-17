@@ -542,6 +542,7 @@ func (a *Server) CreateAppSessionFromReq(ctx context.Context, req NewAppSessionR
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	session.SetExpiry(session.Expiry())
 	if err = a.UpsertAppSession(ctx, session); err != nil {
 		return nil, trace.Wrap(err)
 	}

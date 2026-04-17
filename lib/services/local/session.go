@@ -211,7 +211,7 @@ func (s *IdentityService) ListExpiredAppSessions(ctx context.Context, limit int,
 	allSessions := s.rangeSessions(ctx, pageToken, "", "", appsPrefix, sessionsPrefix)
 
 	expiredSessions := stream.FilterMap(allSessions, func(session types.WebSession) (types.WebSession, bool) {
-		if now.After(session.GetExpiryTime()) {
+		if now.After(session.Expiry()) {
 			return session, true
 		}
 		return nil, false

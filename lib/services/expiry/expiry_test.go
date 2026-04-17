@@ -36,7 +36,7 @@ import (
 	"github.com/gravitational/teleport/lib/utils/log/logtest"
 )
 
-func TestExpiryBasic(t *testing.T) {
+func TestAccessListExpiryBasic(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		ctx := t.Context()
@@ -69,7 +69,7 @@ func TestExpiryBasic(t *testing.T) {
 	})
 }
 
-func TestExpiryInterval(t *testing.T) {
+func TestAccessListExpiryInterval(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		ctx := t.Context()
@@ -135,7 +135,7 @@ func TestExpiryInterval(t *testing.T) {
 	})
 }
 
-func TestExpiryPendingGracePeriod(t *testing.T) {
+func TestAccessListExpiryPendingGracePeriod(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		ctx := t.Context()
@@ -227,6 +227,75 @@ func TestAppSessionExpiry(t *testing.T) {
 	})
 }
 
+func TestAppSessionExpiryInterval(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+
+		const testInterval = time.Hour
+
+		expiry, authServer, emitter := setupExpiryService(t)
+		go func() {
+			// Run with rigid intervals.
+			err := expiry.run(ctx, interval.Config{
+				Duration:      testInterval,
+				FirstDuration: testInterval,
+			})
+			require.NoError(t, err)
+		}()
+
+		createAppSession(t, authServer, "alice", time.Now().Add(1))
+		createAppSession(t, authServer, "bob", time.Now().Add(testInterval+time.Nanosecond))
+		createAppSession(t, authServer, "charlie", time.Now().Add(2*testInterval+time.Nanosecond))
+
+		// Stop just before the first sweep.
+		time.Sleep(testInterval - time.Nanosecond)
+		synctest.Wait()
+		sessions := mustListAppSessions(t, authServer)
+		require.Len(t, sessions, 3)
+		require.ElementsMatch(t, []string{"alice", "bob", "charlie"}, getAppSessionNames(t, sessions))
+		require.Empty(t, emitter.Events())
+
+		// First sweep.
+		time.Sleep(1)
+		synctest.Wait()
+		sessions = mustListAppSessions(t, authServer)
+		require.Len(t, sessions, 2)
+		require.ElementsMatch(t, []string{"bob", "charlie"}, getAppSessionNames(t, sessions))
+		require.Len(t, emitter.Events(), 1)
+
+		// Stop just before the second sweep.
+		time.Sleep(testInterval - time.Nanosecond)
+		synctest.Wait()
+		sessions = mustListAppSessions(t, authServer)
+		require.Len(t, sessions, 2)
+		require.ElementsMatch(t, []string{"bob", "charlie"}, getAppSessionNames(t, sessions))
+		require.Len(t, emitter.Events(), 1)
+
+		// Second sweep.
+		time.Sleep(time.Nanosecond)
+		synctest.Wait()
+		sessions = mustListAppSessions(t, authServer)
+		require.Len(t, sessions, 1)
+		require.Equal(t, "charlie", sessions[0].GetUser())
+		require.Len(t, emitter.Events(), 2)
+
+		// Stop just before the third sweep.
+		time.Sleep(testInterval - time.Nanosecond)
+		synctest.Wait()
+		sessions = mustListAppSessions(t, authServer)
+		require.Len(t, sessions, 1)
+		require.Equal(t, "charlie", sessions[0].GetUser())
+		require.Len(t, emitter.Events(), 2)
+
+		// Third sweep.
+		time.Sleep(time.Nanosecond)
+		synctest.Wait()
+		require.Empty(t, mustListAppSessions(t, authServer))
+		require.Len(t, emitter.Events(), 3)
+	})
+}
+
 func setupExpiryService(t *testing.T) (*Service, *auth.Server, *eventstest.MockRecorderEmitter) {
 	t.Helper()
 
@@ -274,12 +343,12 @@ func createAppSession(t *testing.T, auth *auth.Server, user string, expiry time.
 	t.Helper()
 	ctx := t.Context()
 
-	session, err := types.NewWebSession(user, types.KindAppSession, types.WebSessionSpecV2{
+	session, err := types.NewWebSession(uuid.NewString(), types.KindAppSession, types.WebSessionSpecV2{
 		User:    user,
 		Expires: expiry,
 	})
 	require.NoError(t, err)
-	// session.SetExpiry(expiry)
+	session.SetExpiry(expiry)
 
 	err = auth.UpsertAppSession(ctx, session)
 	require.NoError(t, err)
@@ -306,4 +375,14 @@ func mustListAppSessions(t *testing.T, auth *auth.Server) []types.WebSession {
 	require.NoError(t, err)
 
 	return resp
+}
+
+// Helper to extract session names from slice of WebSessions
+func getAppSessionNames(t *testing.T, sessions []types.WebSession) []string {
+	t.Helper()
+	names := make([]string, 0, len(sessions))
+	for _, s := range sessions {
+		names = append(names, s.GetUser())
+	}
+	return names
 }
