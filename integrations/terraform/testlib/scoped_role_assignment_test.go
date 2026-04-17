@@ -41,7 +41,7 @@ func (s *TerraformSuiteOSS) TestScopedRoleAssignment() {
 	checkDestroyed := func(state *terraform.State) error {
 		accessClient := client.NewAccessClient(s.client.ScopedAccessServiceClient())
 
-		_, err := accessClient.GetScopedRoleAssignment(ctx, "dc6960fa-cbfb-4024-83f1-f6168310638b")
+		_, err := accessClient.GetScopedRoleAssignment(ctx, "test-scoped-role-assignment")
 		if !trace.IsNotFound(err) {
 			return trace.Errorf("expected not found, actual: %v", err)
 		}
@@ -89,8 +89,7 @@ func (s *TerraformSuiteOSS) TestImportScopedRoleAssignment() {
 	accessClient := client.NewAccessClient(s.client.ScopedAccessServiceClient())
 
 	r := "teleport_scoped_role_assignment"
-	id := "test_import_scoped_role_assignment"
-	uuid := "dc6961fa-cbfb-4024-83f1-f6168310638b"
+	id := "test-import-sra"
 	name := r + "." + id
 
 	assignment := &accessv1.ScopedRoleAssignment{
@@ -98,7 +97,7 @@ func (s *TerraformSuiteOSS) TestImportScopedRoleAssignment() {
 		SubKind: access.SubKindDynamic,
 		Version: types.V1,
 		Metadata: &headerv1.Metadata{
-			Name: uuid,
+			Name: id,
 		},
 		Scope: "/staging",
 		Spec: &accessv1.ScopedRoleAssignmentSpec{
@@ -116,7 +115,7 @@ func (s *TerraformSuiteOSS) TestImportScopedRoleAssignment() {
 	require.NoError(t, err)
 
 	require.EventuallyWithT(t, func(t *assert.CollectT) {
-		_, err := accessClient.GetScopedRoleAssignment(ctx, uuid)
+		_, err := accessClient.GetScopedRoleAssignment(ctx, id)
 		require.NoError(t, err)
 	}, 5*time.Second, time.Second)
 
@@ -128,7 +127,7 @@ func (s *TerraformSuiteOSS) TestImportScopedRoleAssignment() {
 				Config:        fmt.Sprintf("%s\nresource %q %q { }", s.terraformConfig, r, id),
 				ResourceName:  name,
 				ImportState:   true,
-				ImportStateId: uuid,
+				ImportStateId: id,
 				ImportStateCheck: func(state []*terraform.InstanceState) error {
 					require.Equal(t, access.KindScopedRoleAssignment, state[0].Attributes["kind"])
 					require.Equal(t, "/staging", state[0].Attributes["scope"])

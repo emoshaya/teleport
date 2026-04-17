@@ -22,9 +22,10 @@
 
 resource "teleport_scoped_role_assignment" "example" {
   version  = "v1"
+  # sub_kind must be dynamic when creating scoped role assignments.
   sub_kind = "dynamic"
   metadata = {
-    name = "dc6961fa-cbfb-4024-83f1-f6168310638b"
+    name = "test-scoped-role-assignment"
   }
 
   scope = "/staging"

@@ -1,7 +1,7 @@
 resource "teleport_scoped_role_assignment" "test" {
   version = "v1"
   metadata = {
-    name = "dc6961fa-cbfb-4024-83f1-f6168310638b"
+    name = "test-scoped-role-assignment"
   }
   scope    = "/staging"
   sub_kind = "dynamic"
