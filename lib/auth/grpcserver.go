@@ -5228,11 +5228,10 @@ func (g *GRPCServer) GetDomainName(ctx context.Context, req *emptypb.Empty) (*au
 func (g *GRPCServer) GetClusterCACert(
 	ctx context.Context, req *emptypb.Empty,
 ) (*authpb.GetClusterCACertResponse, error) {
-	auth, err := g.scopedAuthenticate(ctx)
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	return auth.ServerWithRoles.GetClusterCACert(ctx)
+	// Intentionally bypass all authentication for this public endpoint.
+	// Unauthenticated agents need to call GetClusterCACert when attempting to
+	// join the cluster with a CA pin.
+	return g.AuthServer.GetClusterCACert(ctx)
 }
 
 // GetConnectionDiagnostic reads a connection diagnostic.

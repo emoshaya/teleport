@@ -623,16 +623,6 @@ func (a *ServerWithRoles) GetDomainName(ctx context.Context) (string, error) {
 	return a.authServer.GetDomainName()
 }
 
-// getClusterCACert returns the PEM-encoded TLS certs for the local cluster
-// without signing keys. If the cluster has multiple TLS certs, they will all
-// be concatenated.
-func (a *ServerWithRoles) GetClusterCACert(
-	ctx context.Context,
-) (*proto.GetClusterCACertResponse, error) {
-	// Allow all roles to get the CA certs.
-	return a.authServer.GetClusterCACert(ctx)
-}
-
 // GenerateHostCerts generates new host certificates (signed
 // by the host certificate authority) for a node.
 func (a *ServerWithRoles) GenerateHostCerts(ctx context.Context, req *proto.HostCertsRequest) (*proto.Certs, error) {
