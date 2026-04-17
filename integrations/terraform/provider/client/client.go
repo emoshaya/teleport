@@ -1,6 +1,8 @@
 package client
 
-import "github.com/gravitational/teleport/api/client"
+import (
+	"github.com/gravitational/teleport/api/client"
+)
 
 // TerraformClient is a wrapper that contains necessary APIs required by the terraform provider.
 type TerraformClient struct {

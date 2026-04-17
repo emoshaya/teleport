@@ -21,7 +21,7 @@
 # }
 
 resource "teleport_scoped_role_assignment" "example" {
-  version  = "v1"
+  version = "v1"
   # sub_kind must be dynamic when creating scoped role assignments.
   sub_kind = "dynamic"
   metadata = {
