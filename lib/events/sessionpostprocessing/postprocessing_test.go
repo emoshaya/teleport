@@ -34,6 +34,82 @@ import (
 	"github.com/gravitational/teleport/lib/session"
 )
 
+// TestProcessRecoversFromPanic ensures Process turns a panic in any downstream
+// component (summarizer, recording metadata, etc.) into a regular error
+// return. The gRPC handler that calls Process only logs errors, so this is
+// what keeps a misbehaving recording (e.g. corrupt data from a self-hosted
+// S3 clone driving vt10x into a bad state) from crashing auth.
+func TestProcessRecoversFromPanic(t *testing.T) {
+	sessionID := session.ID(uuid.NewString())
+	events := eventstest.GenerateTestSession(eventstest.SessionParams{
+		UserName:  "alice",
+		SessionID: string(sessionID),
+		ServerID:  "testcluster",
+		PrintData: []string{"boom"},
+	})
+	sessionEnd := events[len(events)-1]
+
+	tests := []struct {
+		name        string
+		summarizer  summarizer.SessionSummarizer
+		metadata    recordingmetadata.Service // nil leaves NewProvider's default no-op in place
+		wantMessage string
+	}{
+		{
+			name:        "metadata panics",
+			summarizer:  summarizer.NoopSummarizer{},
+			metadata:    &panickingRecordingMetadata{},
+			wantMessage: "simulated recording metadata panic",
+		},
+		{
+			name:        "summarizer panics",
+			summarizer:  &panickingSummarizer{},
+			wantMessage: "simulated summarizer panic",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			metadataProvider := recordingmetadata.NewProvider()
+			if tc.metadata != nil {
+				metadataProvider.SetService(tc.metadata)
+			}
+
+			summarizerProvider := summarizer.NewSessionSummarizerProvider()
+			summarizerProvider.SetSummarizer(tc.summarizer)
+
+			err := sessionpostprocessing.Process(t.Context(), sessionpostprocessing.Config{
+				SessionEnd:                sessionEnd,
+				RecordingMetadataProvider: metadataProvider,
+				SessionSummarizerProvider: summarizerProvider,
+				SessionID:                 sessionID,
+			})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantMessage)
+		})
+	}
+}
+
+type panickingRecordingMetadata struct{}
+
+func (p *panickingRecordingMetadata) ProcessSessionRecording(context.Context, session.ID, recordingmetadata.SessionType, time.Duration) error {
+	panic("simulated recording metadata panic")
+}
+
+type panickingSummarizer struct{}
+
+func (p *panickingSummarizer) SummarizeSSH(context.Context, *apievents.SessionEnd) error {
+	panic("simulated summarizer panic")
+}
+
+func (p *panickingSummarizer) SummarizeDatabase(context.Context, *apievents.DatabaseSessionEnd) error {
+	panic("simulated summarizer panic")
+}
+
+func (p *panickingSummarizer) SummarizeWithoutEndEvent(context.Context, session.ID) error {
+	panic("simulated summarizer panic")
+}
+
 func TestSessionPostProcessor(t *testing.T) {
 	sessionID := session.ID(uuid.NewString())
 

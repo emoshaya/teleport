@@ -39,6 +39,7 @@ import (
 	apidefaults "github.com/gravitational/teleport/api/defaults"
 	apievents "github.com/gravitational/teleport/api/types/events"
 	"github.com/gravitational/teleport/api/utils/keys"
+	"github.com/gravitational/teleport/lib/auth/recordingmetadata"
 	"github.com/gravitational/teleport/lib/auth/summarizer"
 	"github.com/gravitational/teleport/lib/events"
 	"github.com/gravitational/teleport/lib/events/eventstest"
@@ -616,6 +617,120 @@ func TestSummarization_Unknown(t *testing.T) {
 	}
 }
 
+// TestRecordingMetadata_StreamDispatch pins the recording-metadata behavior
+// for each session kind the streamer observes. Add a row when a new
+// [recordingmetadata.SessionType] is introduced.
+func TestRecordingMetadata_StreamDispatch(t *testing.T) {
+	const sshFullDuration = 3*time.Hour + time.Second + 7*time.Millisecond
+
+	tests := []struct {
+		name         string
+		generate     func() []apievents.AuditEvent
+		wantCalled   bool
+		wantType     recordingmetadata.SessionType
+		wantDuration time.Duration
+	}{
+		{
+			name: "SSH full stream — metadata derived from SessionEnd timestamps",
+			generate: func() []apievents.AuditEvent {
+				return eventstest.GenerateTestSession(eventstest.SessionParams{PrintEvents: 1})
+			},
+			wantCalled:   true,
+			wantType:     recordingmetadata.SessionTypeTTY,
+			wantDuration: sshFullDuration,
+		},
+		{
+			name: "SSH without SessionEnd — fallback to tracked stream times",
+			generate: func() []apievents.AuditEvent {
+				evts := eventstest.GenerateTestSession(eventstest.SessionParams{PrintEvents: 1})
+				truncated := make([]apievents.AuditEvent, 0, len(evts))
+
+				for _, e := range evts {
+					if _, isEnd := e.(*apievents.SessionEnd); !isEnd {
+						truncated = append(truncated, e)
+					}
+				}
+
+				return truncated
+			},
+			wantCalled: true,
+			wantType:   recordingmetadata.SessionTypeTTY,
+		},
+		{
+			name: "Database — no metadata today; update when SessionTypeDatabase is added",
+			generate: func() []apievents.AuditEvent {
+				return eventstest.GenerateTestDBSession(eventstest.DBSessionParams{Queries: 1})
+			},
+			wantCalled: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			summarizerProvider := &summarizer.SessionSummarizerProvider{}
+			summarizerProvider.SetSummarizer(summarizer.NoopSummarizer{})
+			metadataProvider := &recordingmetadata.Provider{}
+			mockMetadata := &MockRecordingMetadata{}
+			metadataProvider.SetService(mockMetadata)
+
+			uploader := eventstest.NewMemoryUploader()
+			streamer, err := events.NewProtoStreamer(events.ProtoStreamerConfig{
+				Uploader:                  uploader,
+				SessionSummarizerProvider: summarizerProvider,
+				RecordingMetadataProvider: metadataProvider,
+			})
+			require.NoError(t, err)
+
+			evts := tc.generate()
+			sid := session.ID(evts[0].(events.SessionMetadataGetter).GetSessionID())
+
+			if tc.wantCalled {
+				durationMatcher := mock.MatchedBy(func(d time.Duration) bool { return d > 0 })
+
+				if tc.wantDuration != 0 {
+					want := tc.wantDuration
+					durationMatcher = mock.MatchedBy(func(d time.Duration) bool { return d == want })
+				}
+
+				mockMetadata.
+					On("ProcessSessionRecording", mock.Anything, sid, tc.wantType, durationMatcher).
+					Return(nil).
+					Once()
+			}
+
+			recordAllEvents(t, streamer, sid, evts)
+
+			if tc.wantCalled {
+				mockMetadata.AssertExpectations(t)
+			} else {
+				mockMetadata.AssertNotCalled(t, "ProcessSessionRecording",
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+func recordAllEvents(t *testing.T, streamer *events.ProtoStreamer, sid session.ID, evts []apievents.AuditEvent) {
+	t.Helper()
+	stream, err := streamer.CreateAuditStream(t.Context(), sid)
+	require.NoError(t, err)
+
+	preparer, err := events.NewPreparer(events.PreparerConfig{
+		SessionID:   sid,
+		Namespace:   apidefaults.Namespace,
+		ClusterName: "cluster",
+	})
+	require.NoError(t, err)
+
+	for _, evt := range evts {
+		prepared, err := preparer.PrepareSessionEvent(evt)
+		require.NoError(t, err)
+		require.NoError(t, stream.RecordEvent(t.Context(), prepared))
+	}
+
+	require.NoError(t, stream.Complete(t.Context()))
+}
+
 func makeQueryEvent(id string, query string) *apievents.DatabaseSessionQuery {
 	return &apievents.DatabaseSessionQuery{
 		Metadata: apievents.Metadata{
@@ -666,6 +781,15 @@ func (f *fakeEncryptedIO) WithEncryption(ctx context.Context, writer io.WriteClo
 
 func (f *fakeEncryptedIO) WithDecryption(ctx context.Context, reader io.Reader) (io.Reader, error) {
 	return hex.NewDecoder(reader), f.err
+}
+
+type MockRecordingMetadata struct {
+	mock.Mock
+}
+
+func (m *MockRecordingMetadata) ProcessSessionRecording(ctx context.Context, sessionID session.ID, sessionType recordingmetadata.SessionType, duration time.Duration) error {
+	args := m.Called(ctx, sessionID, sessionType, duration)
+	return args.Error(0)
 }
 
 type MockSummarizer struct {

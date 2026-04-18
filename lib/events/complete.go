@@ -37,6 +37,7 @@ import (
 	"github.com/gravitational/teleport/api/utils/retryutils"
 	"github.com/gravitational/teleport/lib/auth/recordingmetadata"
 	"github.com/gravitational/teleport/lib/auth/summarizer"
+	"github.com/gravitational/teleport/lib/events/sessionpostprocessing"
 	"github.com/gravitational/teleport/lib/observability/metrics"
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/utils"
@@ -358,8 +359,6 @@ func (u *UploadCompleter) ensureSessionEndEvent(ctx context.Context, uploadData 
 	// We use the streaming events API to search through the session events, because it works
 	// for both Desktop and SSH sessions
 	var lastEvent events.AuditEvent
-	var startTime time.Time
-	var sessionType recordingmetadata.SessionType
 	var isPTYSession bool
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -381,7 +380,6 @@ loop:
 				return nil
 
 			case *events.WindowsDesktopSessionStart:
-				startTime = e.Time
 				desktopSessionEnd.Type = WindowsDesktopSessionEndEvent
 				desktopSessionEnd.Code = DesktopSessionEndCode
 				desktopSessionEnd.ClusterName = e.ClusterName
@@ -397,9 +395,7 @@ loop:
 				desktopSessionEnd.DesktopName = fmt.Sprintf("%v (recovered)", e.DesktopName)
 
 			case *events.SessionStart:
-				sessionType = recordingmetadata.SessionTypeTTY
 				isPTYSession = true
-				startTime = e.Time
 				sshSessionEnd.Type = SessionEndEvent
 				sshSessionEnd.Code = SessionEndCode
 				sshSessionEnd.ClusterName = e.ClusterName
@@ -414,9 +410,6 @@ loop:
 				sshSessionEnd.SessionRecording = e.SessionRecording
 				sshSessionEnd.Interactive = e.TerminalSize != ""
 				sshSessionEnd.Participants = append(sshSessionEnd.Participants, transformedUsername(e.UserMetadata, u.cfg.ClusterName))
-
-			case *events.DatabaseSessionStart:
-				startTime = e.Time
 
 			case *events.SessionJoin:
 				sshSessionEnd.Participants = append(sshSessionEnd.Participants, transformedUsername(e.UserMetadata, u.cfg.ClusterName))
@@ -467,20 +460,13 @@ loop:
 		return nil
 	}
 
-	// For PTY sessions, process recording metadata and summarization.
-	recordingMetadata := u.cfg.RecordingMetadataProvider.Service()
-	if !startTime.IsZero() && !sessionEndEvent.GetTime().IsZero() {
-		duration := sessionEndEvent.GetTime().Sub(startTime)
-		if err := recordingMetadata.ProcessSessionRecording(ctx, uploadData.SessionID, sessionType, duration); err != nil {
-			slog.WarnContext(ctx, "Failed to process session recording metadata", "error", err)
-		}
-	} else {
-		slog.WarnContext(ctx, "Session start or end time is not set, skipping recording metadata processing")
-	}
-
-	summarizer := u.cfg.SessionSummarizerProvider.SessionSummarizer()
-	if err := summarizer.SummarizeSSH(ctx, &sshSessionEnd); err != nil {
-		slog.WarnContext(ctx, "Failed to summarize upload", "error", err)
+	if err := sessionpostprocessing.Process(ctx, sessionpostprocessing.Config{
+		SessionSummarizerProvider: u.cfg.SessionSummarizerProvider,
+		RecordingMetadataProvider: u.cfg.RecordingMetadataProvider,
+		SessionEnd:                &sshSessionEnd,
+		SessionID:                 uploadData.SessionID,
+	}); err != nil {
+		slog.WarnContext(ctx, "session post-processing failed", "error", err)
 		return trace.Wrap(err)
 	}
 
