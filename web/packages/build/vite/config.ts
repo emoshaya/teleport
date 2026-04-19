@@ -56,6 +56,7 @@ export function createViteConfig(
 
     const config: UserConfig = {
       clearScreen: false,
+      cacheDir: process.env.VITE_CACHE_DIR,
       server: {
         allowedHosts: resolveAllowedHosts(target),
         fs: {
