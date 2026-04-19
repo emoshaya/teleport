@@ -767,8 +767,8 @@ func NewHandler(cfg Config, opts ...HandlerOption) (*APIHandler, error) {
 
 			http.StripPrefix("/web", fs).ServeHTTP(w, r)
 		} else if strings.HasPrefix(r.URL.Path, "/web/") || r.URL.Path == "/web" {
-			csrfToken, err := csrf.AddCSRFProtection(w, r)
-			if err != nil {
+			// Make sure the CSRF cookie is present before the user has a chance to initiate an SSO login.
+			if err := csrf.EnsureCSRFCookie(w, r); err != nil {
 				h.logger.WarnContext(r.Context(), "Failed to generate CSRF token", "error", err)
 			}
 
@@ -776,7 +776,6 @@ func NewHandler(cfg Config, opts ...HandlerOption) (*APIHandler, error) {
 			// not have logged in yet, or their session may have expired.
 			// The web app will show them the login page in this case.
 			session, _ := h.authenticateWebSession(w, r)
-			session.XCSRF = csrfToken
 
 			httplib.SetNoCacheHeaders(w.Header())
 			httplib.SetIndexContentSecurityPolicy(w.Header(), r.URL.Path)
@@ -830,7 +829,6 @@ func NewHandler(cfg Config, opts ...HandlerOption) (*APIHandler, error) {
 
 type webSession struct {
 	Session string
-	XCSRF   string
 }
 
 func (h *Handler) authenticateWebSession(w http.ResponseWriter, r *http.Request) (webSession, error) {

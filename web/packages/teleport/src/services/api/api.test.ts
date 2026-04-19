@@ -189,7 +189,6 @@ describe('api.postWithOptions', () => {
   });
 
   const authHeaders = {
-    'X-CSRF-Token': expect.any(String),
     Authorization: expect.stringMatching(/^Bearer .+/),
   };
 

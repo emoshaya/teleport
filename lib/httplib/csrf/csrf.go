@@ -40,19 +40,20 @@ const CookieName = "__Host-grv_csrf"
 // tokenLenBytes is the length of a raw CSRF token prior to encoding
 const tokenLenBytes = 32
 
-// AddCSRFProtection adds CSRF token into the user session via a secure cookie.
-// This CSRF token is used to protect against login CSRF in Teleport's SSO flows.
-func AddCSRFProtection(w http.ResponseWriter, r *http.Request) (string, error) {
+// EnsureCSRFCookie sets the __Host-grv_csrf cookie, reusing the token from
+// the request if one is already present or generating a new one. The token
+// is later verified during SSO callbacks to protect against login CSRF.
+func EnsureCSRFCookie(w http.ResponseWriter, r *http.Request) error {
 	token, err := ExtractTokenFromCookie(r)
 	// if there was an error retrieving the token, the token doesn't exist
 	if err != nil || len(token) == 0 {
 		token, err = utils.CryptoRandomHex(tokenLenBytes)
 		if err != nil {
-			return "", trace.Wrap(err)
+			return trace.Wrap(err)
 		}
 	}
 	save(token, w)
-	return token, nil
+	return nil
 }
 
 // VerifyToken validates given token based on HTTP request cookie

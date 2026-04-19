@@ -420,9 +420,7 @@ export const defaultRequestOptions: RequestInit = {
 
 export function getAuthHeaders() {
   const accessToken = getAccessToken();
-  const csrfToken = getXCSRFToken();
   return {
-    'X-CSRF-Token': csrfToken,
     Authorization: `Bearer ${accessToken}`,
   };
 }
@@ -434,13 +432,6 @@ export function getNoCacheHeaders() {
     pragma: 'no-cache',
   };
 }
-
-export const getXCSRFToken = () => {
-  const metaTag = document.querySelector(
-    '[name=grv_csrf_token]'
-  ) as HTMLMetaElement;
-  return metaTag ? metaTag.content : '';
-};
 
 export function getAccessToken() {
   return storageService.getBearerToken()?.accessToken;
