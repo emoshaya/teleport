@@ -49,11 +49,12 @@ description: Provides architectural principles for isolating agentc workloads in
 
 ## Audit
 
-- " audit is structural/implicit rather than an explicit design feature. Because
-  all agent traffic flows through Teleport's existing infrastructure (VNet →
-  Proxy → resource services), it passes through Teleport's existing audit log
-  automatically. The DelegationSession means those audit records are attributed
-  to the human owner, not an anonymous agent. The RFD doesn't discuss audit as a
-  designed feature of Beams specifically. It's more a consequence of the
-  identity and access layers — if everything goes through Teleport with a real
-  identity attached, you get audit for free."
+- TODO: Identity for agent workloads means you get auditing for free
+- TODO: Central auth service/proxy service/agent infrastructure allows for
+  auditing, since traffic must flow through central locations, using
+  certificates to authenticate identity, so we can reliably emit telemetry about
+  specific user activity
+- TODO: How identity delegation sessions work (how we can attribute beam
+  activity to a user and workload identity)
+- TODO: Attributing access to the originating user
+- TODO: Attributing access to the beam's workload identity
