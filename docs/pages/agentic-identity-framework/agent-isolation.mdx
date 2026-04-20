@@ -39,13 +39,14 @@ description: Provides architectural principles for isolating agentc workloads in
 
 ## Access controls
 
-- Human users accessing a beam: roles encoded in certificate
-- "For the agent acting inside the beam, it's the same mechanism but mediated
-  through delegation. The DelegationSession generates a certificate for the
-  agent that encodes the user's roles (or a subset of them, in future
-  iterations). When the agent accesses a Teleport-protected resource via VNet,
-  that certificate is presented, and the Auth Service checks its roles the same
-  way it would for a human user."
+- TODO: Every identity gets roles encoded in certificate (general principle)
+- TODO: user certificate allows the system to check RBAC for managing AI
+  workloads
+- TODO: Certificate for agent workload means that agents can check RBAC before
+  passing traffic on to target infra resources
+- TODO: Certificate for agent workload gets the same permissions as originating
+  user because of a Teleport-trusted workload (tbot) that continuously updates
+  certificates in the isolated environment
 
 ## Audit
 
@@ -54,7 +55,7 @@ description: Provides architectural principles for isolating agentc workloads in
   auditing, since traffic must flow through central locations, using
   certificates to authenticate identity, so we can reliably emit telemetry about
   specific user activity
-- TODO: How identity delegation sessions work (how we can attribute beam
+- TODO: How identity delegation sessions work (how we can attribute AI agent
   activity to a user and workload identity)
 - TODO: Attributing access to the originating user
-- TODO: Attributing access to the beam's workload identity
+- TODO: Attributing access to the AI agent's workload identity
