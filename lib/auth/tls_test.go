@@ -1555,6 +1555,7 @@ func TestAuthPreferenceSettings_ScopedIdentity(t *testing.T) {
 func TestTunnelConnectionsCRUD(t *testing.T) {
 	t.Parallel()
 
+	ctx := t.Context()
 	testSrv := newTestTLSServer(t)
 
 	clt, err := testSrv.NewClient(authtest.TestAdmin())
@@ -1573,7 +1574,7 @@ func TestTunnelConnectionsCRUD(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = clt.UpsertTunnelConnection(conn)
+	err = clt.UpsertTunnelConnection(ctx, conn)
 	require.NoError(t, err)
 
 	out, err = clt.GetTunnelConnections(clusterName)
@@ -1589,7 +1590,7 @@ func TestTunnelConnectionsCRUD(t *testing.T) {
 	dt = dt.Add(time.Hour)
 	conn.SetLastHeartbeat(dt)
 
-	err = clt.UpsertTunnelConnection(conn)
+	err = clt.UpsertTunnelConnection(ctx, conn)
 	require.NoError(t, err)
 
 	out, err = clt.GetTunnelConnections(clusterName)
@@ -1601,12 +1602,12 @@ func TestTunnelConnectionsCRUD(t *testing.T) {
 	out, err = clt.GetAllTunnelConnections()
 	require.NoError(t, err)
 	for _, tc := range out {
-		err := testSrv.Auth().DeleteTunnelConnection(tc.GetClusterName(), tc.GetName())
+		err := testSrv.Auth().DeleteTunnelConnection(ctx, tc.GetClusterName(), tc.GetName())
 		require.NoError(t, err)
 	}
 
 	// test delete individual connection
-	err = clt.UpsertTunnelConnection(conn)
+	err = clt.UpsertTunnelConnection(ctx, conn)
 	require.NoError(t, err)
 
 	out, err = clt.GetTunnelConnections(clusterName)
@@ -1614,12 +1615,84 @@ func TestTunnelConnectionsCRUD(t *testing.T) {
 	require.Len(t, out, 1)
 	require.Empty(t, cmp.Diff(out[0], conn, cmpopts.IgnoreFields(types.Metadata{}, "Revision")))
 
-	err = clt.DeleteTunnelConnection(clusterName, conn.GetName())
+	err = clt.DeleteTunnelConnection(ctx, clusterName, conn.GetName())
 	require.NoError(t, err)
 
 	out, err = clt.GetTunnelConnections(clusterName)
 	require.NoError(t, err)
 	require.Empty(t, out)
+
+	// Exercise all three entry points for the upsert/delete paths to make sure
+	// the legacy HTTP handler, the new gRPC RPC, and the client-side fallback
+	// wrapper all stay wired up through the v19→v20 deprecation window.
+	//
+	// TODO(strideynet): DELETE IN v20.0.0 (legacy HTTP case only)
+	t.Run("entrypoints", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			upsert func(t *testing.T, conn *types.TunnelConnectionV2)
+			delete func(t *testing.T, clusterName, connName string)
+		}{
+			{
+				name: "fallback wrapper on *Client",
+				upsert: func(t *testing.T, conn *types.TunnelConnectionV2) {
+					require.NoError(t, clt.UpsertTunnelConnection(ctx, conn))
+				},
+				delete: func(t *testing.T, clusterName, connName string) {
+					require.NoError(t, clt.DeleteTunnelConnection(ctx, clusterName, connName))
+				},
+			},
+			{
+				name: "direct gRPC TrustClient",
+				upsert: func(t *testing.T, conn *types.TunnelConnectionV2) {
+					_, err := clt.TrustClient().UpsertTunnelConnection(ctx, &trustpb.UpsertTunnelConnectionRequest{
+						TunnelConnection: conn,
+					})
+					require.NoError(t, err)
+				},
+				delete: func(t *testing.T, clusterName, connName string) {
+					_, err := clt.TrustClient().DeleteTunnelConnection(ctx, &trustpb.DeleteTunnelConnectionRequest{
+						ClusterName:    clusterName,
+						ConnectionName: connName,
+					})
+					require.NoError(t, err)
+				},
+			},
+			{
+				name: "legacy HTTP handler",
+				upsert: func(t *testing.T, conn *types.TunnelConnectionV2) {
+					require.NoError(t, clt.HTTPClient.UpsertTunnelConnectionLegacy(ctx, conn))
+				},
+				delete: func(t *testing.T, clusterName, connName string) {
+					require.NoError(t, clt.HTTPClient.DeleteTunnelConnectionLegacy(ctx, clusterName, connName))
+				},
+			},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				conn, err := types.NewTunnelConnection("entry-conn", types.TunnelConnectionSpecV2{
+					ClusterName:   clusterName,
+					ProxyName:     "p1",
+					LastHeartbeat: clockwork.NewFakeClock().Now(),
+				})
+				require.NoError(t, err)
+
+				test.upsert(t, conn.(*types.TunnelConnectionV2))
+
+				stored, err := clt.GetTunnelConnections(clusterName)
+				require.NoError(t, err)
+				require.Len(t, stored, 1)
+				require.Equal(t, conn.GetName(), stored[0].GetName())
+
+				test.delete(t, clusterName, conn.GetName())
+
+				stored, err = clt.GetTunnelConnections(clusterName)
+				require.NoError(t, err)
+				require.Empty(t, stored)
+			})
+		}
+	})
 }
 
 func TestServersCRUD(t *testing.T) {
@@ -4793,7 +4866,7 @@ func TestEvents(t *testing.T) {
 			kind: types.WatchKind{
 				Kind: types.KindTunnelConnection,
 			},
-			crud: func(context.Context) types.Resource {
+			crud: func(ctx context.Context) types.Resource {
 				conn, err := types.NewTunnelConnection("conn1", types.TunnelConnectionSpecV2{
 					ClusterName:   "example.com",
 					ProxyName:     "p1",
@@ -4801,13 +4874,13 @@ func TestEvents(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				err = testSrv.Auth().UpsertTunnelConnection(conn)
+				err = testSrv.Auth().UpsertTunnelConnection(ctx, conn)
 				require.NoError(t, err)
 
 				out, err := testSrv.Auth().GetTunnelConnections("example.com")
 				require.NoError(t, err)
 
-				err = testSrv.Auth().DeleteTunnelConnection(conn.GetClusterName(), conn.GetName())
+				err = testSrv.Auth().DeleteTunnelConnection(ctx, conn.GetClusterName(), conn.GetName())
 				require.NoError(t, err)
 
 				return out[0]

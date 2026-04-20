@@ -497,6 +497,56 @@ func (s *Service) RotateExternalCertAuthority(ctx context.Context, req *trustpb.
 	return &trustpb.RotateExternalCertAuthorityResponse{}, nil
 }
 
+// UpsertTunnelConnection creates or updates the provided tunnel connection.
+func (s *Service) UpsertTunnelConnection(ctx context.Context, req *trustpb.UpsertTunnelConnectionRequest) (*trustpb.UpsertTunnelConnectionResponse, error) {
+	if req.TunnelConnection == nil {
+		return nil, trace.BadParameter("missing tunnel connection")
+	}
+
+	authCtx, err := s.authorizer.Authorize(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := authCtx.CheckAccessToKind(types.KindTunnelConnection, types.VerbCreate, types.VerbUpdate); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := s.backend.UpsertTunnelConnection(ctx, req.TunnelConnection); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return &trustpb.UpsertTunnelConnectionResponse{
+		TunnelConnection: req.TunnelConnection,
+	}, nil
+}
+
+// DeleteTunnelConnection removes a single tunnel connection by cluster and
+// connection name.
+func (s *Service) DeleteTunnelConnection(ctx context.Context, req *trustpb.DeleteTunnelConnectionRequest) (*emptypb.Empty, error) {
+	if req.ClusterName == "" {
+		return nil, trace.BadParameter("missing cluster name")
+	}
+	if req.ConnectionName == "" {
+		return nil, trace.BadParameter("missing connection name")
+	}
+
+	authCtx, err := s.authorizer.Authorize(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := authCtx.CheckAccessToKind(types.KindTunnelConnection, types.VerbDelete); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	if err := s.backend.DeleteTunnelConnection(ctx, req.ClusterName, req.ConnectionName); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 // GenerateHostCert takes a public key in the OpenSSH `authorized_keys` format
 // and returns a SSH certificate signed by the Host CA.
 func (s *Service) GenerateHostCert(

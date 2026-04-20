@@ -319,8 +319,14 @@ type upsertTunnelConnectionRawReq struct {
 	TunnelConnection json.RawMessage `json:"tunnel_connection"`
 }
 
-// UpsertTunnelConnection upserts tunnel connection
-func (c *HTTPClient) UpsertTunnelConnection(conn types.TunnelConnection) error {
+// UpsertTunnelConnectionLegacy upserts a tunnel connection via the legacy HTTP
+// endpoint. Used as a fallback by [Client.UpsertTunnelConnection] when the
+// auth server does not yet support the gRPC equivalent.
+//
+// Deprecated: Prefer [Client.UpsertTunnelConnection].
+//
+// TODO(strideynet): DELETE IN v20.0.0
+func (c *HTTPClient) UpsertTunnelConnectionLegacy(ctx context.Context, conn types.TunnelConnection) error {
 	data, err := services.MarshalTunnelConnection(conn)
 	if err != nil {
 		return trace.Wrap(err)
@@ -328,7 +334,7 @@ func (c *HTTPClient) UpsertTunnelConnection(conn types.TunnelConnection) error {
 	args := &upsertTunnelConnectionRawReq{
 		TunnelConnection: data,
 	}
-	_, err = c.PostJSON(context.TODO(), c.Endpoint("tunnelconnections"), args)
+	_, err = c.PostJSON(ctx, c.Endpoint("tunnelconnections"), args)
 	return trace.Wrap(err)
 }
 
@@ -377,15 +383,21 @@ func (c *HTTPClient) GetAllTunnelConnections(opts ...services.MarshalOption) ([]
 	return conns, nil
 }
 
-// DeleteTunnelConnection deletes tunnel connection by name
-func (c *HTTPClient) DeleteTunnelConnection(clusterName string, connName string) error {
+// DeleteTunnelConnectionLegacy deletes a tunnel connection via the legacy HTTP
+// endpoint. Used as a fallback by [Client.DeleteTunnelConnection] when the
+// auth server does not yet support the gRPC equivalent.
+//
+// Deprecated: Prefer [Client.DeleteTunnelConnection].
+//
+// TODO(strideynet): DELETE IN v20.0.0
+func (c *HTTPClient) DeleteTunnelConnectionLegacy(ctx context.Context, clusterName string, connName string) error {
 	if clusterName == "" {
 		return trace.BadParameter("missing parameter cluster name")
 	}
 	if connName == "" {
 		return trace.BadParameter("missing parameter connection name")
 	}
-	_, err := c.Delete(context.TODO(), c.Endpoint("tunnelconnections", clusterName, connName))
+	_, err := c.Delete(ctx, c.Endpoint("tunnelconnections", clusterName, connName))
 	return trace.Wrap(err)
 }
 
