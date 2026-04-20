@@ -2087,7 +2087,8 @@ type DatabaseStatusV3 struct {
 	ManagedUsers []string `protobuf:"bytes,4,rep,name=ManagedUsers,proto3" json:"managed_users,omitempty"`
 	// Azure is the auto-discovered Azure cloud database metadata.
 	Azure Azure `protobuf:"bytes,5,opt,name=Azure,proto3" json:"azure"`
-	// VNetDNSName is a DNS-safe, deterministic hash of the database name.
+	// VNetDNSName is a DNS-safe, deterministic hash of the database name
+	// used by VNet for database FQDN resolution.
 	VNetDNSName          string   `protobuf:"bytes,6,opt,name=VNetDNSName,proto3" json:"vnet_dns_name,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
