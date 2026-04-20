@@ -315,29 +315,6 @@ func (c *HTTPClient) Delete(ctx context.Context, u string) (*roundtrip.Response,
 	return httplib.ConvertResponse(c.Client.Delete(ctx, u))
 }
 
-type upsertTunnelConnectionRawReq struct {
-	TunnelConnection json.RawMessage `json:"tunnel_connection"`
-}
-
-// UpsertTunnelConnectionLegacy upserts a tunnel connection via the legacy HTTP
-// endpoint. Used as a fallback by [Client.UpsertTunnelConnection] when the
-// auth server does not yet support the gRPC equivalent.
-//
-// Deprecated: Prefer [Client.UpsertTunnelConnection].
-//
-// TODO(strideynet): DELETE IN v20.0.0
-func (c *HTTPClient) UpsertTunnelConnectionLegacy(ctx context.Context, conn types.TunnelConnection) error {
-	data, err := services.MarshalTunnelConnection(conn)
-	if err != nil {
-		return trace.Wrap(err)
-	}
-	args := &upsertTunnelConnectionRawReq{
-		TunnelConnection: data,
-	}
-	_, err = c.PostJSON(ctx, c.Endpoint("tunnelconnections"), args)
-	return trace.Wrap(err)
-}
-
 // GetTunnelConnections returns tunnel connections for a given cluster
 func (c *HTTPClient) GetTunnelConnections(clusterName string, opts ...services.MarshalOption) ([]types.TunnelConnection, error) {
 	if clusterName == "" {
@@ -381,24 +358,6 @@ func (c *HTTPClient) GetAllTunnelConnections(opts ...services.MarshalOption) ([]
 		conns[i] = conn
 	}
 	return conns, nil
-}
-
-// DeleteTunnelConnectionLegacy deletes a tunnel connection via the legacy HTTP
-// endpoint. Used as a fallback by [Client.DeleteTunnelConnection] when the
-// auth server does not yet support the gRPC equivalent.
-//
-// Deprecated: Prefer [Client.DeleteTunnelConnection].
-//
-// TODO(strideynet): DELETE IN v20.0.0
-func (c *HTTPClient) DeleteTunnelConnectionLegacy(ctx context.Context, clusterName string, connName string) error {
-	if clusterName == "" {
-		return trace.BadParameter("missing parameter cluster name")
-	}
-	if connName == "" {
-		return trace.BadParameter("missing parameter connection name")
-	}
-	_, err := c.Delete(ctx, c.Endpoint("tunnelconnections", clusterName, connName))
-	return trace.Wrap(err)
 }
 
 type upsertServerRawReq struct {

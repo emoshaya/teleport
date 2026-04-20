@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base32"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -1621,78 +1622,47 @@ func TestTunnelConnectionsCRUD(t *testing.T) {
 	out, err = clt.GetTunnelConnections(clusterName)
 	require.NoError(t, err)
 	require.Empty(t, out)
+}
 
-	// Exercise all three entry points for the upsert/delete paths to make sure
-	// the legacy HTTP handler, the new gRPC RPC, and the client-side fallback
-	// wrapper all stay wired up through the v19→v20 deprecation window.
-	//
-	// TODO(strideynet): DELETE IN v20.0.0 (legacy HTTP case only)
-	t.Run("entrypoints", func(t *testing.T) {
-		tests := []struct {
-			name   string
-			upsert func(t *testing.T, conn *types.TunnelConnectionV2)
-			delete func(t *testing.T, clusterName, connName string)
-		}{
-			{
-				name: "fallback wrapper on *Client",
-				upsert: func(t *testing.T, conn *types.TunnelConnectionV2) {
-					require.NoError(t, clt.UpsertTunnelConnection(ctx, conn))
-				},
-				delete: func(t *testing.T, clusterName, connName string) {
-					require.NoError(t, clt.DeleteTunnelConnection(ctx, clusterName, connName))
-				},
-			},
-			{
-				name: "direct gRPC TrustClient",
-				upsert: func(t *testing.T, conn *types.TunnelConnectionV2) {
-					_, err := clt.TrustClient().UpsertTunnelConnection(ctx, &trustpb.UpsertTunnelConnectionRequest{
-						TunnelConnection: conn,
-					})
-					require.NoError(t, err)
-				},
-				delete: func(t *testing.T, clusterName, connName string) {
-					_, err := clt.TrustClient().DeleteTunnelConnection(ctx, &trustpb.DeleteTunnelConnectionRequest{
-						ClusterName:    clusterName,
-						ConnectionName: connName,
-					})
-					require.NoError(t, err)
-				},
-			},
-			{
-				name: "legacy HTTP handler",
-				upsert: func(t *testing.T, conn *types.TunnelConnectionV2) {
-					require.NoError(t, clt.HTTPClient.UpsertTunnelConnectionLegacy(ctx, conn))
-				},
-				delete: func(t *testing.T, clusterName, connName string) {
-					require.NoError(t, clt.HTTPClient.DeleteTunnelConnectionLegacy(ctx, clusterName, connName))
-				},
-			},
-		}
+// TestTunnelConnectionsLegacyHTTP exercises the legacy HTTP handlers for
+// tunnel connection upsert/delete directly so they stay covered during the
+// v19→v20 fallback window without re-exporting the fallback helpers.
+//
+// TODO(strideynet): DELETE IN v20.0.0
+func TestTunnelConnectionsLegacyHTTP(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
 
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
-				conn, err := types.NewTunnelConnection("entry-conn", types.TunnelConnectionSpecV2{
-					ClusterName:   clusterName,
-					ProxyName:     "p1",
-					LastHeartbeat: clockwork.NewFakeClock().Now(),
-				})
-				require.NoError(t, err)
+	testSrv := newTestTLSServer(t)
+	clt, err := testSrv.NewClient(authtest.TestAdmin())
+	require.NoError(t, err)
 
-				test.upsert(t, conn.(*types.TunnelConnectionV2))
-
-				stored, err := clt.GetTunnelConnections(clusterName)
-				require.NoError(t, err)
-				require.Len(t, stored, 1)
-				require.Equal(t, conn.GetName(), stored[0].GetName())
-
-				test.delete(t, clusterName, conn.GetName())
-
-				stored, err = clt.GetTunnelConnections(clusterName)
-				require.NoError(t, err)
-				require.Empty(t, stored)
-			})
-		}
+	const clusterName = "example.com"
+	conn, err := types.NewTunnelConnection("conn-legacy", types.TunnelConnectionSpecV2{
+		ClusterName:   clusterName,
+		ProxyName:     "p1",
+		LastHeartbeat: clockwork.NewFakeClock().Now(),
 	})
+	require.NoError(t, err)
+
+	data, err := services.MarshalTunnelConnection(conn)
+	require.NoError(t, err)
+	_, err = clt.HTTPClient.PostJSON(ctx, clt.HTTPClient.Endpoint("tunnelconnections"), &struct {
+		TunnelConnection json.RawMessage `json:"tunnel_connection"`
+	}{TunnelConnection: data})
+	require.NoError(t, err)
+
+	stored, err := clt.GetTunnelConnections(clusterName)
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.Equal(t, conn.GetName(), stored[0].GetName())
+
+	_, err = clt.HTTPClient.Delete(ctx, clt.HTTPClient.Endpoint("tunnelconnections", clusterName, conn.GetName()))
+	require.NoError(t, err)
+
+	stored, err = clt.GetTunnelConnections(clusterName)
+	require.NoError(t, err)
+	require.Empty(t, stored)
 }
 
 func TestServersCRUD(t *testing.T) {

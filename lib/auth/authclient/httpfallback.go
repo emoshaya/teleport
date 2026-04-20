@@ -76,10 +76,7 @@ func (c *HTTPClient) validateTrustedCluster(ctx context.Context, validateRequest
 	return validateResponse, nil
 }
 
-// UpsertTunnelConnection creates or updates a tunnel connection record. It
-// calls the gRPC [trustpb.TrustService.UpsertTunnelConnection] RPC and falls
-// back to the legacy HTTP endpoint when talking to an auth server that does
-// not yet implement it.
+// UpsertTunnelConnection creates or updates a tunnel connection record.
 //
 // TODO(strideynet): DELETE IN v20.0.0
 func (c *Client) UpsertTunnelConnection(ctx context.Context, conn types.TunnelConnection) error {
@@ -92,17 +89,29 @@ func (c *Client) UpsertTunnelConnection(ctx context.Context, conn types.TunnelCo
 	})
 	if err != nil {
 		if trace.IsNotImplemented(err) {
-			return c.HTTPClient.UpsertTunnelConnectionLegacy(ctx, conn)
+			return c.HTTPClient.upsertTunnelConnection(ctx, conn)
 		}
 		return trace.Wrap(err)
 	}
 	return nil
 }
 
-// DeleteTunnelConnection removes a tunnel connection by cluster and connection
-// name. It calls the gRPC [trustpb.TrustService.DeleteTunnelConnection] RPC
-// and falls back to the legacy HTTP endpoint when talking to an auth server
-// that does not yet implement it.
+// TODO(strideynet): DELETE IN v20.0.0
+func (c *HTTPClient) upsertTunnelConnection(ctx context.Context, conn types.TunnelConnection) error {
+	data, err := services.MarshalTunnelConnection(conn)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	args := &struct {
+		TunnelConnection json.RawMessage `json:"tunnel_connection"`
+	}{
+		TunnelConnection: data,
+	}
+	_, err = c.PostJSON(ctx, c.Endpoint("tunnelconnections"), args)
+	return trace.Wrap(err)
+}
+
+// DeleteTunnelConnection removes a tunnel connection by cluster and connection name.
 //
 // TODO(strideynet): DELETE IN v20.0.0
 func (c *Client) DeleteTunnelConnection(ctx context.Context, clusterName, connName string) error {
@@ -112,11 +121,23 @@ func (c *Client) DeleteTunnelConnection(ctx context.Context, clusterName, connNa
 	})
 	if err != nil {
 		if trace.IsNotImplemented(err) {
-			return c.HTTPClient.DeleteTunnelConnectionLegacy(ctx, clusterName, connName)
+			return c.HTTPClient.deleteTunnelConnection(ctx, clusterName, connName)
 		}
 		return trace.Wrap(err)
 	}
 	return nil
+}
+
+// TODO(strideynet): DELETE IN v20.0.0
+func (c *HTTPClient) deleteTunnelConnection(ctx context.Context, clusterName, connName string) error {
+	if clusterName == "" {
+		return trace.BadParameter("missing parameter cluster name")
+	}
+	if connName == "" {
+		return trace.BadParameter("missing parameter connection name")
+	}
+	_, err := c.Delete(ctx, c.Endpoint("tunnelconnections", clusterName, connName))
+	return trace.Wrap(err)
 }
 
 // GetAuthServers returns the list of auth servers registered in the cluster.
