@@ -10,27 +10,16 @@ description: Provides architectural principles for isolating agentc workloads in
 
 ## Identity
 
-- "Infrastructure identity — authenticating the components themselves. That's
-  what mTLS, SSH certificates, SPIFFE X509-SVIDs, and WorkloadIdentity are
-  doing. Each component (Envoy, tbot, the auth server) has a cryptographic
-  identity that lets other components verify who they're talking to"
-- "User identity delegation — the more distinctive piece. The beam doesn't just
-  have its own identity; it inherits the human user's identity via the
-  DelegationSession. This means the agent acts as the user, not as an anonymous
-  compute job. Every resource access the agent makes is attributable to a
-  specific person, with that person's permissions governing what's allowed.
-  [...] That second piece is what separates Beams from a generic compute
-  sandbox. A Firecracker microVM running in isolation with mTLS-authenticated
-  connections is just secure infrastructure. The delegation mechanism is what
-  makes the agent's identity meaningful in the context of the organization's
-  access model — and it's also what makes audit possible, since there's a human
-  identity to attribute actions to."
-- "VNet is the mechanism that makes identity delegation practical. Without it,
-  the agent would need to explicitly authenticate to each resource, which would
-  mean either managing credentials itself or requiring human intervention. VNet
-  intercepts connections transparently and attaches the delegated identity
-  certificate at the point of access, so the delegation mechanism works without
-  the agent's cooperation or awareness."
+- TODO: Every component gets an identity: user certificates, certificate for
+  tbot bot, SSH host cert for the beam, workload identity SVID, TLS user cert
+  issued for the remote workload
+- TODO: central auth service issues certs
+- TODO: agents check certs against the CA
+- TODO: the remote AI agent workload inherits the user's certificate and acts as
+  the user.
+- TODO: the remote AI agent uses its certificate to connect to resources. A
+  mechanism is in place to allow the agent to transparently connect to resources
+  without being aware of its environment.
 
 ## Access controls
 
@@ -54,3 +43,7 @@ description: Provides architectural principles for isolating agentc workloads in
   activity to a user and workload identity)
 - TODO: Attributing access to the originating user
 - TODO: Attributing access to the AI agent's workload identity
+
+## Reference implementation
+
+TODO: explain how Beams implements the principles spelled out above
