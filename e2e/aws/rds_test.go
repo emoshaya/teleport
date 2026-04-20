@@ -142,21 +142,40 @@ func testRDS(t *testing.T) {
 		// db1 admin *will not* be a Postgres superuser
 		db1AdminUser := "admin_" + randASCII(t)
 		db1 := cloneDBWithNewAdmin(t, db, &types.DatabaseAdminUser{
+			Name: db1AdminUser,
+		})
+		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db1))
+		// for use in tests where admin is not postgres superuser and reassignment_user is set
+		db1WithReassignmentUser := cloneDBWithNewAdmin(t, db, &types.DatabaseAdminUser{
 			Name:             db1AdminUser,
 			ReassignmentUser: db1AdminUser,
 		})
-		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db1))
+		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db1WithReassignmentUser))
 		// db2 admin *will* be a Postgres superuser
 		db2AdminUser := "su_admin_" + randASCII(t)
 		db2 := cloneDBWithNewAdmin(t, db, &types.DatabaseAdminUser{
+			Name: db2AdminUser,
+		})
+		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db2))
+		// for use in tests where admin is postgres superuser and reassignment_user is set
+		db2WithReassignmentUser := cloneDBWithNewAdmin(t, db, &types.DatabaseAdminUser{
 			Name:             db2AdminUser,
 			ReassignmentUser: db2AdminUser,
 		})
-		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db2))
-		waitForDatabases(t, cluster.Process, db1.GetName(), db2.GetName())
+		require.NoError(t, cluster.Process.GetAuthServer().CreateDatabase(ctx, db2WithReassignmentUser))
+
+		// wait for databases to be auto-discovered, and get their populated versions
+		waitForDatabases(t, cluster.Process,
+			db1.GetName(), db1WithReassignmentUser.GetName(),
+			db2.GetName(), db2WithReassignmentUser.GetName(),
+		)
 		db1, err = cluster.Process.GetAuthServer().GetDatabase(ctx, db1.GetName())
 		require.NoError(t, err)
+		db1WithReassignmentUser, err = cluster.Process.GetAuthServer().GetDatabase(ctx, db1WithReassignmentUser.GetName())
+		require.NoError(t, err)
 		db2, err = cluster.Process.GetAuthServer().GetDatabase(ctx, db2.GetName())
+		require.NoError(t, err)
+		db2WithReassignmentUser, err = cluster.Process.GetAuthServer().GetDatabase(ctx, db2WithReassignmentUser.GetName())
 		require.NoError(t, err)
 
 		conn := connectAsRDSPostgresAdmin(t, ctx, db.GetAWS().RDS.InstanceID)
@@ -208,6 +227,7 @@ func testRDS(t *testing.T) {
 		for _, test := range []struct {
 			name                         string
 			db                           types.Database
+			dbWithReassignmentUser       types.Database
 			autoUserKeep                 string
 			autoUserDrop                 string
 			autoUserFineGrain            string
@@ -216,6 +236,7 @@ func testRDS(t *testing.T) {
 			{
 				name:                         "non superuser db admin",
 				db:                           db1,
+				dbWithReassignmentUser:       db1WithReassignmentUser,
 				autoUserKeep:                 autoUserKeep,
 				autoUserDrop:                 autoUserDrop,
 				autoUserFineGrain:            autoUserFineGrain,
@@ -224,6 +245,7 @@ func testRDS(t *testing.T) {
 			{
 				name:                         "superuser db admin",
 				db:                           db2,
+				dbWithReassignmentUser:       db2WithReassignmentUser,
 				autoUserKeep:                 autoUserKeep2,
 				autoUserDrop:                 autoUserDrop2,
 				autoUserFineGrain:            autoUserFineGrain2,
@@ -234,23 +256,25 @@ func testRDS(t *testing.T) {
 			autoUserDrop := test.autoUserDrop
 			autoUserFineGrain := test.autoUserFineGrain
 			autoUserDropWithReassignment := test.autoUserDropWithReassignment
-			db := test.db
 			t.Run(test.name, func(t *testing.T) {
 				t.Parallel()
 				for name, test := range map[string]struct {
 					user            string
 					dbUser          string
+					db              types.Database
 					query           string
 					afterConnTestFn func(t *testing.T)
 				}{
 					"existing user": {
 						user:   hostUser,
-						dbUser: db.GetAdminUser().Name, // admin user already has RDS IAM auth
+						dbUser: test.db.GetAdminUser().Name, // admin user already has RDS IAM auth
+						db:     test.db,
 						query:  "select 1",
 					},
 					"auto user keep": {
 						user:   autoUserKeep,
 						dbUser: autoUserKeep,
+						db:     test.db,
 						query:  autoRolesQuery,
 						afterConnTestFn: func(t *testing.T) {
 							waitForPostgresAutoUserDeactivate(t, ctx, conn, autoUserKeep)
@@ -259,6 +283,7 @@ func testRDS(t *testing.T) {
 					"auto user drop": {
 						user:   autoUserDrop,
 						dbUser: autoUserDrop,
+						db:     test.db,
 						query:  autoRolesQuery,
 						afterConnTestFn: func(t *testing.T) {
 							waitForPostgresAutoUserDrop(t, ctx, conn, autoUserDrop)
@@ -267,6 +292,7 @@ func testRDS(t *testing.T) {
 					"auto user drop with reassignment": {
 						user:   autoUserDropWithReassignment,
 						dbUser: autoUserDropWithReassignment,
+						db:     test.dbWithReassignmentUser,
 						query:  autoRolesQuery,
 						afterConnTestFn: func(t *testing.T) {
 							// Create test objects as admin and assign to auto-user
@@ -276,7 +302,7 @@ func testRDS(t *testing.T) {
 
 							// Wait for user drop and ownership transfer
 							waitForPostgresAutoUserDropWithReassignment(
-								t, ctx, conn, autoUserDropWithReassignment, db.GetAdminUser().ReassignmentUser, testTable)
+								t, ctx, conn, autoUserDropWithReassignment, test.dbWithReassignmentUser.GetAdminUser().ReassignmentUser, testTable)
 
 							// Cleanup
 							pgMustExec(t, ctx, conn, fmt.Sprintf("DROP TABLE IF EXISTS public.%q", testTable))
@@ -285,6 +311,7 @@ func testRDS(t *testing.T) {
 					"db permissions": {
 						user:   autoUserFineGrain,
 						dbUser: autoUserFineGrain,
+						db:     test.db,
 						query: fmt.Sprintf(`
 							SELECT
 								1
@@ -304,7 +331,7 @@ func testRDS(t *testing.T) {
 						t.Parallel()
 						t.Run("connect", func(t *testing.T) {
 							route := tlsca.RouteToDatabase{
-								ServiceName: db.GetName(),
+								ServiceName: test.db.GetName(),
 								Protocol:    defaults.ProtocolPostgres,
 								Username:    test.dbUser,
 								Database:    "postgres",
