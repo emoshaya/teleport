@@ -3,13 +3,20 @@ title: AI Agent Isolation
 description: Provides architectural principles for isolating agentc workloads in order to manage agentic identity.
 ---
 
+TODO: Explain how running AI workloads is a key part of AI infrastructure
+
+TODO: explain how building security into AI, rather than bolting it on, requires
+multiple, connected layers: sandboxing, identity, access controls, and audit
+
 ## Sandboxing
 
+- TODO: Why sandboxing is necessary
 - TODO: hardware-level virtualization
 - TODO: untrusted code and its execution enviornment exist ephemerally
 
 ## Identity
 
+- TODO: Why identity is necessary
 - TODO: Every component gets an identity: user certificates, certificate for
   tbot bot, SSH host cert for the beam, workload identity SVID, TLS user cert
   issued for the remote workload
@@ -23,6 +30,7 @@ description: Provides architectural principles for isolating agentc workloads in
 
 ## Access controls
 
+- TODO: Why access controls are necessary
 - TODO: Every identity gets roles encoded in certificate (general principle)
 - TODO: user certificate allows the system to check RBAC for managing AI
   workloads
@@ -34,6 +42,7 @@ description: Provides architectural principles for isolating agentc workloads in
 
 ## Audit
 
+- TODO: Why audit is necessary
 - TODO: Identity for agent workloads means you get auditing for free
 - TODO: Central auth service/proxy service/agent infrastructure allows for
   auditing, since traffic must flow through central locations, using
