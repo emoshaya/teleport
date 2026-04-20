@@ -20,7 +20,6 @@ package sessionpostprocessing
 
 import (
 	"context"
-	"runtime/debug"
 
 	"github.com/gravitational/trace"
 
@@ -54,18 +53,8 @@ type Config struct {
 
 // Process processes session end events after the session recording upload is complete.
 // It summarizes the session recording and processes the recording metadata.
-//
-// A recovered panic from any downstream component is converted into an error return so
-// that a corrupt recording (e.g. one produced by a misbehaving storage backend) cannot
-// crash the auth server.
-func Process(ctx context.Context, cfg Config) (err error) {
+func Process(ctx context.Context, cfg Config) error {
 	var summarizerErr, metadataErr error
-	defer func() {
-		if r := recover(); r != nil {
-			panicErr := trace.Errorf("panic in session post-processing: %v\n%s", r, debug.Stack())
-			err = trace.NewAggregate(panicErr, summarizerErr, metadataErr)
-		}
-	}()
 
 	switch {
 	case cfg.SessionSummarizerProvider == nil:
