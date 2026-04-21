@@ -95,7 +95,7 @@ func defaultTeleportServiceConfig(t *testing.T, insecureMode bool) (*helpers.Tel
 		HostID:      uuid.New().String(),
 		NodeName:    helpers.Loopback,
 		Logger:      slog.Default(),
-		Modules: testModules,
+		Modules:     testModules,
 	})
 
 	rcConf := servicecfg.MakeDefaultConfig()

@@ -321,7 +321,7 @@ func SetupWithOptions(t *testing.T, opts AppTestOptions) *Pack {
 		Priv:        privateKey,
 		Pub:         publicKey,
 		Logger:      log,
-		Modules: modulestest.EnterpriseModules(),
+		Modules:     modulestest.EnterpriseModules(),
 	}
 	if opts.RootClusterListeners != nil {
 		rootCfg.Listeners = opts.RootClusterListeners(t, &rootCfg.Fds)
@@ -337,7 +337,7 @@ func SetupWithOptions(t *testing.T, opts AppTestOptions) *Pack {
 		Priv:        privateKey,
 		Pub:         publicKey,
 		Logger:      log,
-		Modules: modulestest.EnterpriseModules(),
+		Modules:     modulestest.EnterpriseModules(),
 	}
 	if opts.LeafClusterListeners != nil {
 		leafCfg.Listeners = opts.LeafClusterListeners(t, &leafCfg.Fds)

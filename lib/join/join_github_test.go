@@ -119,7 +119,7 @@ func TestJoinGHA(t *testing.T) {
 	testModules := modulestest.OSSModules()
 	authServer, err := authtest.NewTestServer(authtest.ServerConfig{
 		Auth: authtest.AuthServerConfig{
-			Dir: t.TempDir(),
+			Dir:     t.TempDir(),
 			Modules: testModules,
 		},
 	})
