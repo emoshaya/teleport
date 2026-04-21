@@ -71,7 +71,6 @@ import (
 	"github.com/gravitational/teleport/api/constants"
 	"github.com/gravitational/teleport/api/profile"
 	"github.com/gravitational/teleport/api/types"
-	"github.com/gravitational/teleport/entitlements"
 	"github.com/gravitational/teleport/integration/helpers"
 	"github.com/gravitational/teleport/integration/kube"
 	"github.com/gravitational/teleport/lib/auth/authclient"
@@ -80,7 +79,6 @@ import (
 	"github.com/gravitational/teleport/lib/cloud/imds"
 	"github.com/gravitational/teleport/lib/defaults"
 	kubeutils "github.com/gravitational/teleport/lib/kube/utils"
-	"github.com/gravitational/teleport/lib/modules"
 	"github.com/gravitational/teleport/lib/modules/modulestest"
 	"github.com/gravitational/teleport/lib/service"
 	"github.com/gravitational/teleport/lib/service/servicecfg"
@@ -1545,15 +1543,6 @@ func testKubeTransportProtocol(t *testing.T, suite *KubeSuite) {
 
 // TODO: test against tsh kubectl
 func testKubeEphemeralContainers(t *testing.T, suite *KubeSuite) {
-	modulestest.SetTestModules(t, modulestest.Modules{
-		TestBuildType: modules.BuildEnterprise,
-		TestFeatures: modules.Features{
-			Entitlements: map[entitlements.EntitlementKind]modules.EntitlementInfo{
-				entitlements.K8s: {Enabled: true},
-			},
-		},
-	})
-
 	tconf := suite.teleKubeConfig(Host)
 	teleport := helpers.NewInstance(t, helpers.InstanceConfig{
 		ClusterName: helpers.Site,
@@ -1562,6 +1551,7 @@ func testKubeEphemeralContainers(t *testing.T, suite *KubeSuite) {
 		Priv:        suite.priv,
 		Pub:         suite.pub,
 		Logger:      suite.log,
+		Modules:     modulestest.EnterpriseModules(),
 	})
 
 	username := suite.me.Username
