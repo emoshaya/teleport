@@ -227,6 +227,7 @@ linters:
             - '!**/e/lib/jamf/testenv/**'
             - '!**/e/lib/operatortest/**'
             - '!**/e/tests/**'
+            - '!**/integration/app/fixture.go'
             - '!**/integration/db/fixture.go'
             - '!**/integration/helpers/**'
             - '!**/integrations/lib/testing/**'
