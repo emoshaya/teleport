@@ -137,6 +137,9 @@ type Config struct {
 	// IntegrationOnlyCredentials discards any Matcher that don't have an Integration.
 	// When true, ambient credentials (used by the Cloud SDKs) are not used.
 	IntegrationOnlyCredentials bool
+	// AzureCloudEnvironment optionally overrides the Azure cloud environment
+	// used by discovery service Azure clients.
+	AzureCloudEnvironment string
 	// KubernetesClient is the Kubernetes client interface
 	KubernetesClient kubernetes.Interface
 	// Matchers stores all types of matchers to discover resources
@@ -931,6 +934,9 @@ func (s *Server) getAzureClients(ctx context.Context, integration string) (azure
 
 	out, err := utils.FnCacheGet(ctx, s.azureClientCache, integration, func(ctx context.Context) (azure.Clients, error) {
 		var opts []azure.ClientsOption
+		if s.AzureCloudEnvironment != "" {
+			opts = append(opts, azure.WithCloudEnvironment(s.AzureCloudEnvironment))
+		}
 		if integration != "" {
 			opts = append(opts, azure.WithIntegrationCredentials(integration, s.AccessPoint))
 		}

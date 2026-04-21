@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"sort"
 	"sync"
 
 	"github.com/gravitational/trace"
@@ -38,7 +39,44 @@ const (
 	imdsURL = "http://169.254.169.254/metadata"
 	// minimumSupportedAPIVersion is the minimum supported version of the Azure instance metadata API.
 	minimumSupportedAPIVersion = "2019-06-04"
+
+	// DefaultAccessTokenResource is the default Azure ARM resource used for
+	// requesting a managed identity access token in Azure Public Cloud.
+	DefaultAccessTokenResource = "https://management.azure.com/"
+
+	// Azure cloud environment names returned by IMDS (compute.azEnvironment).
+	AzurePublicCloudEnvironment       = "AzurePublicCloud"
+	AzureChinaCloudEnvironment        = "AzureChinaCloud"
+	AzureUSGovernmentEnvironment      = "AzureUSGovernment"
+	AzureUSGovernmentCloudEnvironment = "AzureUSGovernmentCloud"
+	AzureGermanCloudEnvironment       = "AzureGermanCloud"
 )
+
+var accessTokenResourceByCloudEnvironment = map[string]string{
+	AzurePublicCloudEnvironment:       DefaultAccessTokenResource,
+	AzureChinaCloudEnvironment:        "https://management.chinacloudapi.cn/",
+	AzureUSGovernmentEnvironment:      "https://management.usgovcloudapi.net/",
+	AzureUSGovernmentCloudEnvironment: "https://management.usgovcloudapi.net/",
+	AzureGermanCloudEnvironment:       "https://management.microsoftazure.de/",
+}
+
+// AccessTokenResourceForCloudEnvironment returns the ARM resource to request
+// from IMDS for a given Azure cloud environment.
+func AccessTokenResourceForCloudEnvironment(cloudEnvironment string) (string, bool) {
+	resource, ok := accessTokenResourceByCloudEnvironment[cloudEnvironment]
+	return resource, ok
+}
+
+// SupportedCloudEnvironments returns the list of known Azure cloud
+// environments.
+func SupportedCloudEnvironments() []string {
+	envs := make([]string, 0, len(accessTokenResourceByCloudEnvironment))
+	for env := range accessTokenResourceByCloudEnvironment {
+		envs = append(envs, env)
+	}
+	sort.Strings(envs)
+	return envs
+}
 
 // InstanceMetadataClient is a client for Azure instance metadata.
 type InstanceMetadataClient struct {
@@ -228,6 +266,7 @@ type InstanceInfo struct {
 	SubscriptionID    string `json:"subscriptionId"`
 	VMID              string `json:"vmId"`
 	ResourceID        string `json:"resourceId"`
+	CloudEnvironment  string `json:"azEnvironment"`
 }
 
 // GetInstanceInfo gets the Azure Instance information.
@@ -272,13 +311,30 @@ func (client *InstanceMetadataClient) GetAttestedData(ctx context.Context, nonce
 	return body, trace.Wrap(err)
 }
 
+func (client *InstanceMetadataClient) getAccessTokenResource(ctx context.Context) string {
+	instanceInfo, err := client.GetInstanceInfo(ctx)
+	if err != nil {
+		return DefaultAccessTokenResource
+	}
+	if resource, ok := AccessTokenResourceForCloudEnvironment(instanceInfo.CloudEnvironment); ok {
+		return resource
+	}
+	return DefaultAccessTokenResource
+}
+
 // GetAccessToken gets an oauth2 access token from the instance.
-func (client *InstanceMetadataClient) GetAccessToken(ctx context.Context, clientID string) (string, error) {
+//
+// If resource is empty, the request target is inferred from IMDS
+// compute.azEnvironment and defaults to Azure Public ARM.
+func (client *InstanceMetadataClient) GetAccessToken(ctx context.Context, clientID, resource string) (string, error) {
 	if !client.IsAvailable(ctx) {
 		return "", trace.NotFound("Instance metadata is not available")
 	}
 
-	params := url.Values{"resource": []string{"https://management.azure.com/"}}
+	if resource == "" {
+		resource = client.getAccessTokenResource(ctx)
+	}
+	params := url.Values{"resource": []string{resource}}
 	if clientID != "" {
 		params["client_id"] = []string{clientID}
 	}

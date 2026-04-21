@@ -54,9 +54,6 @@ const graphVersion = "v1.0"
 // defaultPageSize is the page size used when [Config.PageSize] is not specified.
 const defaultPageSize = 500
 
-// scopes defines OAuth scopes the client authenticates for.
-var scopes = []string{"https://graph.microsoft.com/.default"}
-
 // AzureTokenProvider defines a method to get an authorization token from the Entra STS.
 // Concrete implementations of this are defined by [github.com/Azure/azure-sdk-for-go/sdk/azidentity].
 type AzureTokenProvider interface {
@@ -147,6 +144,7 @@ func (cfg *Config) Validate() error {
 type Client struct {
 	httpClient    *http.Client
 	tokenProvider AzureTokenProvider
+	tokenScope    string
 	clock         clockwork.Clock
 	retryConfig   retryutils.RetryV2Config
 	baseURL       *url.URL
@@ -175,6 +173,7 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{
 		httpClient:    cfg.HTTPClient,
 		tokenProvider: cfg.TokenProvider,
+		tokenScope:    graphScope(cfg.GraphEndpoint),
 		clock:         cfg.Clock,
 		retryConfig:   *cfg.RetryConfig,
 		baseURL:       base.JoinPath(graphVersion),
@@ -182,6 +181,10 @@ func NewClient(cfg Config) (*Client, error) {
 		logger:        cfg.Logger,
 		metrics:       m,
 	}, nil
+}
+
+func graphScope(graphEndpoint string) string {
+	return strings.TrimSuffix(strings.TrimSpace(graphEndpoint), "/") + "/.default"
 }
 
 // request is the base function for HTTP API calls.
@@ -228,7 +231,7 @@ func (c *Client) request(ctx context.Context, method string, uri string, header 
 			}
 		}
 		token, err := c.tokenProvider.GetToken(ctx, policy.TokenRequestOptions{
-			Scopes: scopes,
+			Scopes: []string{c.tokenScope},
 		})
 		if err != nil {
 			authFailedError := &azidentity.AuthenticationFailedError{}

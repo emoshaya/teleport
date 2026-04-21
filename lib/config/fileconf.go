@@ -517,7 +517,8 @@ type JoinParams struct {
 
 // AzureJoinParams configures the parameters specific to the Azure join method.
 type AzureJoinParams struct {
-	ClientID string `yaml:"client_id"`
+	ClientID         string `yaml:"client_id"`
+	CloudEnvironment string `yaml:"cloud_environment,omitempty"`
 }
 
 // BoundKeypairParams contains parameters specific to bound keypair joining.

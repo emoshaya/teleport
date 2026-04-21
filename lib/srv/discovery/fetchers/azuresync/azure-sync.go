@@ -45,6 +45,9 @@ type AzureOIDCCredentials interface {
 type Config struct {
 	// SubscriptionID is the Azure subscriptipn ID
 	SubscriptionID string
+	// CloudEnvironment optionally overrides the Azure cloud environment
+	// (for example "AzureChinaCloud").
+	CloudEnvironment string
 	// Integration is the name of the associated Teleport integration
 	Integration string
 	// DiscoveryConfigName is the name of this Discovery configuration
@@ -92,7 +95,7 @@ func NewFetcher(cfg Config, ctx context.Context) (*Fetcher, error) {
 	var err error
 	if cfg.Integration == "" {
 		// Establish the credential from the managed identity
-		cred, err = azidentity.NewDefaultAzureCredential(nil)
+		cred, err = azidentity.NewDefaultAzureCredential(azure.GetDefaultAzureCredentialOptions(ctx, cfg.CloudEnvironment))
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -108,7 +111,7 @@ func NewFetcher(cfg Config, ctx context.Context) (*Fetcher, error) {
 		}
 		cred, err = azidentity.NewClientAssertionCredential(azureIntegration.TenantID, azureIntegration.ClientID, func(ctx context.Context) (string, error) {
 			return cfg.OIDCCredentials.GenerateAzureOIDCToken(ctx, cfg.Integration)
-		}, nil)
+		}, azure.GetClientAssertionCredentialOptions(ctx, cfg.CloudEnvironment))
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -117,19 +120,21 @@ func NewFetcher(cfg Config, ctx context.Context) (*Fetcher, error) {
 	// Create the clients for the fetcher
 	graphClient, err := msgraph.NewClient(msgraph.Config{
 		TokenProvider: cred,
+		GraphEndpoint: azure.GetMSGraphEndpoint(ctx, cfg.CloudEnvironment),
 	})
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	roleAssignClient, err := azure.NewRoleAssignmentsClient(cfg.SubscriptionID, cred, nil)
+	armOpts := azure.GetARMClientOptions(ctx, cfg.CloudEnvironment)
+	roleAssignClient, err := azure.NewRoleAssignmentsClient(cfg.SubscriptionID, cred, armOpts)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	roleDefClient, err := azure.NewRoleDefinitionsClient(cfg.SubscriptionID, cred, nil)
+	roleDefClient, err := azure.NewRoleDefinitionsClient(cfg.SubscriptionID, cred, armOpts)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	vmClient, err := azure.NewVirtualMachinesClient(cfg.SubscriptionID, cred, nil)
+	vmClient, err := azure.NewVirtualMachinesClient(cfg.SubscriptionID, cred, armOpts)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

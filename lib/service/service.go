@@ -6046,6 +6046,7 @@ func (process *TeleportProcess) initProxyEndpoint(conn *Connector) error {
 			InventoryHandle:          process.inventoryHandle,
 			ConnectedProxyGetter:     reversetunnel.NewConnectedProxyGetter(),
 			HealthCheckManager:       healthCheckManager,
+			AzureCloudEnvironment:    process.Config.JoinParams.Azure.CloudEnvironment,
 		})
 		if err != nil {
 			return trace.Wrap(err)

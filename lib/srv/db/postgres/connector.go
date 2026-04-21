@@ -235,7 +235,7 @@ Note that IAM changes may take a few minutes to propagate.`, err, c.databaseUser
 			return tlsConn, nil
 		}
 	case types.DatabaseTypeAzure:
-		config.Password, err = c.auth.GetAzureAccessToken(ctx)
+		config.Password, err = c.auth.GetAzureAccessToken(ctx, c.database)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}

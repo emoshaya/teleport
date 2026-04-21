@@ -26,6 +26,7 @@ import (
 	apissh "github.com/gravitational/teleport/api/ssh"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/authz"
+	"github.com/gravitational/teleport/lib/cloud/azure"
 	"github.com/gravitational/teleport/lib/limiter"
 	"github.com/gravitational/teleport/lib/reversetunnel"
 	"github.com/gravitational/teleport/lib/services"
@@ -147,6 +148,15 @@ func (process *TeleportProcess) initDatabaseService() (retErr error) {
 		return trace.Wrap(err)
 	}
 
+	azureClientOptions := []azure.ClientsOption{}
+	if cloudEnvironment := process.Config.JoinParams.Azure.CloudEnvironment; cloudEnvironment != "" {
+		azureClientOptions = append(azureClientOptions, azure.WithCloudEnvironment(cloudEnvironment))
+	}
+	azureClients, err := azure.NewClients(azureClientOptions...)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
 	// Create and start the database service.
 	dbService, err := db.New(process.ExitContext(), db.Config{
 		Clock:                process.Clock,
@@ -165,6 +175,7 @@ func (process *TeleportProcess) initDatabaseService() (retErr error) {
 		ResourceMatchers:     process.Config.Databases.ResourceMatchers,
 		AWSMatchers:          process.Config.Databases.AWSMatchers,
 		AzureMatchers:        process.Config.Databases.AzureMatchers,
+		AzureClients:         azureClients,
 		OnHeartbeat:          process.OnHeartbeat(teleport.ComponentDatabase),
 		ConnectionMonitor:    connMonitor,
 		ConnectedProxyGetter: proxyGetter,

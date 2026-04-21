@@ -202,14 +202,15 @@ type mockIMDS struct {
 	t              *testing.T
 	versionsCalled bool
 	lastAPIVersion string
+	lastResource   string
 
 	mu sync.Mutex
 }
 
-func (m *mockIMDS) status() (versionsCalled bool, lastAPIVersion string) {
+func (m *mockIMDS) status() (versionsCalled bool, lastAPIVersion, lastResource string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.versionsCalled, m.lastAPIVersion
+	return m.versionsCalled, m.lastAPIVersion, m.lastResource
 }
 
 func newMockIMDS(t *testing.T, overrides map[string]http.Handler) (*mockIMDS, *httptest.Server) {
@@ -221,6 +222,7 @@ func newMockIMDS(t *testing.T, overrides map[string]http.Handler) (*mockIMDS, *h
 		defer m.mu.Unlock()
 
 		m.lastAPIVersion = r.URL.Query().Get("api-version")
+		m.lastResource = r.URL.Query().Get("resource")
 
 		if r.URL.Path == "/versions" {
 			m.versionsCalled = true
@@ -283,13 +285,14 @@ func TestGetInstanceInfo(t *testing.T) {
 			name:       "all fields",
 			statusCode: http.StatusOK,
 			body: []byte(`{"resourceId":"test-id", "location":"eastus", "resourceGroupName":"TestGroup", ` +
-				`"subscriptionId": "5187AF11-3581-4AB6-A654-59405CD40C44", "vmId":"ED7DAC09-6E73-447F-BD18-AF4D1196C1E4"}`),
+				`"subscriptionId": "5187AF11-3581-4AB6-A654-59405CD40C44", "vmId":"ED7DAC09-6E73-447F-BD18-AF4D1196C1E4", "azEnvironment":"AzureChinaCloud"}`),
 			expectedInstanceInfo: &InstanceInfo{
 				ResourceID:        "test-id",
 				Location:          "eastus",
 				ResourceGroupName: "TestGroup",
 				SubscriptionID:    "5187AF11-3581-4AB6-A654-59405CD40C44",
 				VMID:              "ED7DAC09-6E73-447F-BD18-AF4D1196C1E4",
+				CloudEnvironment:  "AzureChinaCloud",
 			},
 			wantErr: "",
 		},
@@ -399,7 +402,7 @@ func TestMethodsEnsureInitialization(t *testing.T) {
 			return err
 		}},
 		{"GetAccessToken", func(ctx context.Context, c *InstanceMetadataClient) error {
-			_, err := c.GetAccessToken(ctx, "")
+			_, err := c.GetAccessToken(ctx, "", "")
 			return err
 		}},
 	}
@@ -415,10 +418,112 @@ func TestMethodsEnsureInitialization(t *testing.T) {
 
 			err := tc.call(t.Context(), client)
 			require.NoError(t, err)
-			versionsCalled, lastAPIVersion := mock.status()
+			versionsCalled, lastAPIVersion, _ := mock.status()
 			require.True(t, versionsCalled, "should call /versions to initialize")
 			require.Equal(t, "2023-07-01", lastAPIVersion, "should use negotiated api-version")
 			require.Equal(t, "2023-07-01", client.GetAPIVersion(), "client should be initialized")
+		})
+	}
+}
+
+func TestAccessTokenResourceForCloudEnvironment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		cloudEnvironment string
+		expectedResource string
+		expectedFound    bool
+	}{
+		{
+			name:             "public",
+			cloudEnvironment: AzurePublicCloudEnvironment,
+			expectedResource: "https://management.azure.com/",
+			expectedFound:    true,
+		},
+		{
+			name:             "china",
+			cloudEnvironment: AzureChinaCloudEnvironment,
+			expectedResource: "https://management.chinacloudapi.cn/",
+			expectedFound:    true,
+		},
+		{
+			name:             "us gov",
+			cloudEnvironment: AzureUSGovernmentEnvironment,
+			expectedResource: "https://management.usgovcloudapi.net/",
+			expectedFound:    true,
+		},
+		{
+			name:             "unknown",
+			cloudEnvironment: "UnknownCloud",
+			expectedFound:    false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resource, ok := AccessTokenResourceForCloudEnvironment(tc.cloudEnvironment)
+			require.Equal(t, tc.expectedFound, ok)
+			require.Equal(t, tc.expectedResource, resource)
+		})
+	}
+}
+
+func TestGetAccessTokenResource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		cloudEnvironment string
+		resourceOverride string
+		expectedResource string
+	}{
+		{
+			name:             "public from imds",
+			cloudEnvironment: AzurePublicCloudEnvironment,
+			expectedResource: "https://management.azure.com/",
+		},
+		{
+			name:             "china from imds",
+			cloudEnvironment: AzureChinaCloudEnvironment,
+			expectedResource: "https://management.chinacloudapi.cn/",
+		},
+		{
+			name:             "unknown defaults to public",
+			cloudEnvironment: "UnknownCloud",
+			expectedResource: "https://management.azure.com/",
+		},
+		{
+			name:             "explicit override",
+			cloudEnvironment: AzureChinaCloudEnvironment,
+			resourceOverride: "https://management.azure.com/",
+			expectedResource: "https://management.azure.com/",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mock, srv := newMockIMDS(t, map[string]http.Handler{
+				"/instance/compute": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if tc.resourceOverride != "" {
+						require.FailNow(t, "instance metadata should not be requested when resource override is set")
+					}
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"azEnvironment":"` + tc.cloudEnvironment + `"}`))
+				}),
+			})
+			defer srv.Close()
+
+			client := NewInstanceMetadataClient(WithBaseURL(srv.URL))
+			token, err := client.GetAccessToken(t.Context(), "", tc.resourceOverride)
+			require.NoError(t, err)
+			require.Equal(t, "test-token", token)
+
+			_, _, lastResource := mock.status()
+			require.Equal(t, tc.expectedResource, lastResource)
 		})
 	}
 }

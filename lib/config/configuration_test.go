@@ -3711,6 +3711,24 @@ teleport:
 			expectJoinMethod: types.JoinMethodIAM,
 		},
 		{
+			desc: "join_params azure cloud environment",
+			input: `
+teleport:
+  join_params:
+    token_name: xxxyyy
+    method: azure
+    azure:
+      cloud_environment: AzureChinaCloud
+`,
+			expectToken:      "xxxyyy",
+			expectJoinMethod: types.JoinMethodAzure,
+			expectParsed: &servicecfg.JoinParams{
+				Azure: servicecfg.AzureJoinParams{
+					CloudEnvironment: "AzureChinaCloud",
+				},
+			},
+		},
+		{
 			desc: "join_params invalid",
 			input: `
 teleport:

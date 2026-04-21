@@ -342,6 +342,23 @@ method](#aws-iam-role-iam) or [ephemeral secret tokens](#ephemeral-tokens).
 The Azure join method is available to any Teleport process running in an
 Azure Virtual Machine.
 
+Teleport automatically detects the cloud from Azure IMDS (`compute.azEnvironment`)
+and requests the matching Azure Resource Manager audience. You can optionally
+override the cloud in agent configuration:
+
+```yaml
+teleport:
+  join_params:
+    token_name: azure-token
+    method: azure
+    azure:
+      cloud_environment: AzureChinaCloud
+```
+
+Supported `cloud_environment` values are:
+`AzurePublicCloud`, `AzureChinaCloud`, `AzureUSGovernment`,
+`AzureUSGovernmentCloud`, and `AzureGermanCloud`.
+
 (!docs/pages/includes/provision-token/azure-spec.mdx!)
 
 <Admonition type="note" title="See Also">

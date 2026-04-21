@@ -76,6 +76,7 @@ func (process *TeleportProcess) initDiscoveryService() error {
 
 	discoveryService, err := discovery.New(process.ExitContext(), &discovery.Config{
 		IntegrationOnlyCredentials: process.integrationOnlyCredentials(),
+		AzureCloudEnvironment:      process.Config.JoinParams.Azure.CloudEnvironment,
 		Matchers: discovery.Matchers{
 			AWS:         process.Config.Discovery.AWSMatchers,
 			Azure:       process.Config.Discovery.AzureMatchers,

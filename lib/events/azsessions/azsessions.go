@@ -45,6 +45,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/gravitational/teleport"
+	cloudazure "github.com/gravitational/teleport/lib/cloud/azure"
 	"github.com/gravitational/teleport/lib/events"
 	"github.com/gravitational/teleport/lib/session"
 	"github.com/gravitational/teleport/lib/utils/downloadretrier"
@@ -193,7 +194,7 @@ func NewHandler(ctx context.Context, cfg Config) (*Handler, error) {
 		return nil, trace.Wrap(err)
 	}
 
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	cred, err := azidentity.NewDefaultAzureCredential(cloudazure.GetDefaultAzureCredentialOptions(ctx, ""))
 	if err != nil {
 		return nil, trace.Wrap(err, "creating Azure credentials")
 	}

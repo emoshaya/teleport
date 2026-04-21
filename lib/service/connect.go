@@ -816,7 +816,8 @@ func (process *TeleportProcess) makeJoinParams(
 	}
 	if joinParams.JoinMethod == types.JoinMethodAzure {
 		joinParams.AzureParams = joinclient.AzureParams{
-			ClientID: process.Config.JoinParams.Azure.ClientID,
+			ClientID:         process.Config.JoinParams.Azure.ClientID,
+			CloudEnvironment: process.Config.JoinParams.Azure.CloudEnvironment,
 		}
 	}
 	if joinParams.JoinMethod == types.JoinMethodBoundKeypair {

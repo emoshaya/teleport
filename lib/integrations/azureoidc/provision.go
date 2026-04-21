@@ -29,18 +29,20 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/gravitational/trace"
 
+	cloudazure "github.com/gravitational/teleport/lib/cloud/azure"
 	"github.com/gravitational/teleport/lib/msgraph"
 )
 
 // createGraphClient creates a new graph client from ambient credentials (Azure CLI credentials cache).
 func createGraphClient() (*msgraph.Client, error) {
-	credential, err := azidentity.NewDefaultAzureCredential(nil)
+	credential, err := azidentity.NewDefaultAzureCredential(cloudazure.GetDefaultAzureCredentialOptions(context.Background(), ""))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 
 	client, err := msgraph.NewClient(msgraph.Config{
 		TokenProvider: credential,
+		GraphEndpoint: cloudazure.GetMSGraphEndpoint(context.Background(), ""),
 	})
 	return client, trace.Wrap(err)
 }

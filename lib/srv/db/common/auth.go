@@ -93,7 +93,7 @@ type Auth interface {
 	// GetCloudSQLPassword generates password for a Cloud SQL database user.
 	GetCloudSQLPassword(ctx context.Context, database types.Database, databaseUser string) (string, error)
 	// GetAzureAccessToken generates Azure database access token.
-	GetAzureAccessToken(ctx context.Context) (string, error)
+	GetAzureAccessToken(ctx context.Context, database types.Database) (string, error)
 	// GetAzureCacheForRedisToken retrieves auth token for Azure Cache for Redis.
 	GetAzureCacheForRedisToken(ctx context.Context, database types.Database) (string, error)
 	// GetTLSConfig builds the client TLS configuration for the session.
@@ -658,16 +658,17 @@ SQL Admin" GCP IAM role, or "cloudsql.users.update" IAM permission.
 }
 
 // GetAzureAccessToken generates Azure database access token.
-func (a *dbAuth) GetAzureAccessToken(ctx context.Context) (string, error) {
+func (a *dbAuth) GetAzureAccessToken(ctx context.Context, database types.Database) (string, error) {
 	a.cfg.Logger.DebugContext(ctx, "Generating Azure access token")
 	cred, err := a.cfg.AzureClients.GetCredential(ctx)
 	if err != nil {
 		return "", trace.Wrap(err)
 	}
+	scope := azureutils.GetOSSRDBMSAADTokenScope(database.GetURI())
 	token, err := cred.GetToken(ctx, policy.TokenRequestOptions{
 		Scopes: []string{
 			// Access token scope for connecting to Postgres/MySQL database.
-			"https://ossrdbms-aad.database.windows.net/.default",
+			scope,
 		},
 	})
 	if err != nil {

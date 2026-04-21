@@ -70,7 +70,19 @@ func azureJoin(ctx context.Context, stream messages.ClientStream, joinParams Joi
 	if err != nil {
 		return nil, trace.Wrap(err, "getting intermediate CA for attested data")
 	}
-	accessToken, err := imds.GetAccessToken(ctx, joinParams.AzureParams.ClientID)
+	resource := ""
+	if joinParams.AzureParams.CloudEnvironment != "" {
+		var ok bool
+		resource, ok = azure.AccessTokenResourceForCloudEnvironment(joinParams.AzureParams.CloudEnvironment)
+		if !ok {
+			return nil, trace.BadParameter(
+				"unsupported Azure cloud environment %q (supported values: %v)",
+				joinParams.AzureParams.CloudEnvironment,
+				azure.SupportedCloudEnvironments(),
+			)
+		}
+	}
+	accessToken, err := imds.GetAccessToken(ctx, joinParams.AzureParams.ClientID, resource)
 	if err != nil {
 		return nil, trace.Wrap(err, "getting access token")
 	}

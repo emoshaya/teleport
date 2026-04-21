@@ -30,28 +30,8 @@ import (
 // - https://management.azure.com/metadata/endpoints?api-version=2019-05-01
 // - https://github.com/Azure/azure-cli/blob/dev/src/azure-cli-core/azure/cli/core/cloud.py
 func IsAzureEndpoint(hostname string) bool {
-	suffixes := []string{
-		"management.azure.com",
-		"graph.windows.net",
-		"batch.core.windows.net",
-		"rest.media.azure.net",
-		"datalake.azure.net",
-		"management.core.windows.net",
-		"gallery.azure.com",
-
-		"azuredatalakestore.net",
-		"azurecr.io",
-		"database.windows.net",
-		"azuredatalakeanalytics.net",
-		"vault.azure.net",
-		"core.windows.net",
-		"azurefd.net",
-
-		"login.microsoftonline.com", // required for "az logout"
-		"graph.microsoft.com",       // Azure AD
-	}
-
-	for _, suffix := range suffixes {
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
+	for _, suffix := range azureEndpointSuffixes {
 		// exact match
 		if hostname == suffix {
 			return true
@@ -68,7 +48,13 @@ func IsAzureEndpoint(hostname string) bool {
 // IsDatabaseEndpoint returns true if provided endpoint is a valid database
 // endpoint.
 func IsDatabaseEndpoint(endpoint string) bool {
-	return strings.Contains(endpoint, DatabaseEndpointSuffix)
+	host := normalizeEndpointHost(endpoint)
+	for _, suffix := range databaseEndpointSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsCacheForRedisEndpoint returns true if provided endpoint is a valid Azure
@@ -92,7 +78,13 @@ func IsRedisEnterpriseEndpoint(endpoint string) bool {
 // IsMSSQLServerEndpoint returns true if provided endpoint is a valid SQL server
 // database endpoint.
 func IsMSSQLServerEndpoint(endpoint string) bool {
-	return strings.Contains(endpoint, MSSQLEndpointSuffix)
+	host := normalizeEndpointHost(endpoint)
+	for _, suffix := range mssqlEndpointSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseDatabaseEndpoint extracts database server name from Azure endpoint.
@@ -101,13 +93,27 @@ func ParseDatabaseEndpoint(endpoint string) (name string, err error) {
 	if err != nil {
 		return "", trace.Wrap(err)
 	}
+	host = strings.ToLower(host)
 	// Azure endpoint looks like this:
 	// name.mysql.database.azure.com
 	parts := strings.Split(host, ".")
-	if !strings.HasSuffix(host, DatabaseEndpointSuffix) || len(parts) != 5 {
+	if !hasDatabaseEndpointSuffix(host) || len(parts) != 5 {
 		return "", trace.BadParameter("failed to parse %v as Azure endpoint", endpoint)
 	}
 	return parts[0], nil
+}
+
+// GetOSSRDBMSAADTokenScope returns the Azure OSS RDBMS AAD scope for a database endpoint.
+// Defaults to public cloud scope when endpoint cloud cannot be inferred.
+func GetOSSRDBMSAADTokenScope(endpoint string) string {
+	host := normalizeEndpointHost(endpoint)
+	if strings.HasSuffix(host, ".database.chinacloudapi.cn") {
+		return OSSRDBMSAADScopeChina
+	}
+	if strings.HasSuffix(host, ".database.usgovcloudapi.net") {
+		return OSSRDBMSAADScopeUSGov
+	}
+	return OSSRDBMSAADScopePublic
 }
 
 // ParseCacheForRedisEndpoint extracts database server name from Azure Cache
@@ -164,8 +170,9 @@ func ParseMSSQLEndpoint(endpoint string) (name string, err error) {
 	}
 	// Azure endpoint looks like this:
 	// name.database.windows.net
+	host = strings.ToLower(host)
 	parts := strings.Split(host, ".")
-	if !strings.HasSuffix(host, MSSQLEndpointSuffix) || len(parts) != 4 {
+	if !hasMSSQLEndpointSuffix(host) || len(parts) != 4 {
 		return "", trace.BadParameter("failed to parse %v as Azure MSSQL endpoint", endpoint)
 	}
 
@@ -176,10 +183,45 @@ func ParseMSSQLEndpoint(endpoint string) (name string, err error) {
 	return parts[0], nil
 }
 
+func hasDatabaseEndpointSuffix(host string) bool {
+	for _, suffix := range databaseEndpointSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeEndpointHost(endpoint string) string {
+	host := strings.ToLower(strings.TrimSpace(endpoint))
+	if host == "" {
+		return host
+	}
+
+	// Accept URL-form and host[:port]-form endpoint strings.
+	if strings.Contains(host, "://") {
+		parsed, err := url.Parse(host)
+		if err == nil && parsed != nil && parsed.Hostname() != "" {
+			return strings.ToLower(parsed.Hostname())
+		}
+	}
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		return strings.ToLower(parsedHost)
+	}
+	return host
+}
+
 const (
 	// DatabaseEndpointSuffix is the Azure database endpoint suffix. Used for
 	// MySQL, PostgreSQL, etc.
 	DatabaseEndpointSuffix = ".database.azure.com"
+
+	// OSSRDBMSAADScopePublic is the Azure OSS RDBMS AAD scope for public cloud.
+	OSSRDBMSAADScopePublic = "https://ossrdbms-aad.database.windows.net/.default"
+	// OSSRDBMSAADScopeChina is the Azure OSS RDBMS AAD scope for Azure China.
+	OSSRDBMSAADScopeChina = "https://ossrdbms-aad.database.chinacloudapi.cn/.default"
+	// OSSRDBMSAADScopeUSGov is the Azure OSS RDBMS AAD scope for Azure US Government.
+	OSSRDBMSAADScopeUSGov = "https://ossrdbms-aad.database.usgovcloudapi.net/.default"
 
 	// RedisEndpointSuffix is the endpoint suffix for Redis.
 	RedisEndpointSuffix = ".redis.cache.windows.net"
@@ -189,4 +231,84 @@ const (
 
 	// MSSQLEndpointSuffix is the Azure SQL Server endpoint suffix.
 	MSSQLEndpointSuffix = ".database.windows.net"
+	// MSSQLEndpointSuffixChina is the Azure China SQL Server endpoint suffix.
+	MSSQLEndpointSuffixChina = ".database.chinacloudapi.cn"
+	// MSSQLEndpointSuffixUSGov is the Azure US Government SQL Server endpoint suffix.
+	MSSQLEndpointSuffixUSGov = ".database.usgovcloudapi.net"
 )
+
+var databaseEndpointSuffixes = []string{
+	// Public cloud supports mysql/postgres/mariadb under this suffix.
+	DatabaseEndpointSuffix,
+	// Azure China.
+	".mysql.database.chinacloudapi.cn",
+	".postgres.database.chinacloudapi.cn",
+	".mariadb.database.chinacloudapi.cn",
+	// Azure US Government.
+	".mysql.database.usgovcloudapi.net",
+	".postgres.database.usgovcloudapi.net",
+	".mariadb.database.usgovcloudapi.net",
+}
+
+var mssqlEndpointSuffixes = []string{
+	MSSQLEndpointSuffix,
+	MSSQLEndpointSuffixChina,
+	MSSQLEndpointSuffixUSGov,
+}
+
+var azureEndpointSuffixes = []string{
+	// Resource manager / control plane endpoints.
+	"management.azure.com",
+	"management.chinacloudapi.cn",
+	"management.usgovcloudapi.net",
+	"management.core.windows.net",
+	"management.core.chinacloudapi.cn",
+	"management.core.usgovcloudapi.net",
+
+	// Graph and auth endpoints.
+	"graph.windows.net",
+	"graph.chinacloudapi.cn",
+	"graph.microsoftazure.us",
+	"graph.microsoft.com",
+	"microsoftgraph.chinacloudapi.cn",
+	"graph.microsoft.us",
+	"login.microsoftonline.com", // required for "az logout"
+	"login.chinacloudapi.cn",
+	"login.microsoftonline.us",
+
+	// Common Azure service endpoints.
+	"batch.core.windows.net",
+	"batch.chinacloudapi.cn",
+	"batch.core.usgovcloudapi.net",
+	"rest.media.azure.net",
+	"rest.media.chinacloudapi.cn",
+	"rest.media.usgovcloudapi.net",
+	"datalake.azure.net",
+	"gallery.azure.com",
+	"gallery.chinacloudapi.cn",
+	"gallery.usgovcloudapi.net",
+	"azuredatalakestore.net",
+	"azuredatalakeanalytics.net",
+	"azurecr.io",
+	"azurecr.cn",
+	"azurecr.us",
+	"database.windows.net",
+	"database.chinacloudapi.cn",
+	"database.usgovcloudapi.net",
+	"vault.azure.net",
+	"vault.azure.cn",
+	"vault.usgovcloudapi.net",
+	"core.windows.net",
+	"core.chinacloudapi.cn",
+	"core.usgovcloudapi.net",
+	"azurefd.net",
+}
+
+func hasMSSQLEndpointSuffix(host string) bool {
+	for _, suffix := range mssqlEndpointSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}

@@ -87,7 +87,7 @@ func Test_workloadIdentityCredentialProvider(t *testing.T) {
 	credProvider.newClient = func(string, azcore.TokenCredential, *arm.ClientOptions) (*cloudazure.UserAssignedIdentitiesClient, error) {
 		return cloudazure.NewUserAssignedIdentitiesClientByAPI(mockAPI), nil
 	}
-	credProvider.newCredential = func(clientID string) (azcore.TokenCredential, error) {
+	credProvider.newCredential = func(_ context.Context, clientID string) (azcore.TokenCredential, error) {
 		if clientID != "my-client-id" {
 			return nil, trace.BadParameter("expect my-client-id but got %s", clientID)
 		}

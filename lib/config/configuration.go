@@ -3183,7 +3183,8 @@ func applyTokenConfig(fc *FileConfig, cfg *servicecfg.Config) error {
 		if fc.JoinParams.Azure != (AzureJoinParams{}) {
 			cfg.JoinParams = servicecfg.JoinParams{
 				Azure: servicecfg.AzureJoinParams{
-					ClientID: fc.JoinParams.Azure.ClientID,
+					ClientID:         fc.JoinParams.Azure.ClientID,
+					CloudEnvironment: fc.JoinParams.Azure.CloudEnvironment,
 				},
 			}
 		}

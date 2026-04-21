@@ -1619,6 +1619,25 @@ func TestBoundKeypairConfig(t *testing.T) {
 			expectJoinParams: JoinParams{},
 		},
 		{
+			desc: "azure cloud environment",
+			mutate: func(cfg cfgMap) {
+				cfg["teleport"].(cfgMap)["join_params"] = cfgMap{
+					"token_name": "example",
+					"method":     "azure",
+					"azure": cfgMap{
+						"cloud_environment": "AzureChinaCloud",
+					},
+				}
+			},
+			expectJoinParams: JoinParams{
+				TokenName: "example",
+				Method:    types.JoinMethodAzure,
+				Azure: AzureJoinParams{
+					CloudEnvironment: "AzureChinaCloud",
+				},
+			},
+		},
+		{
 			desc: "bound keypair registration secret value",
 			mutate: func(cfg cfgMap) {
 				cfg["teleport"].(cfgMap)["join_params"] = cfgMap{

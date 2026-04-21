@@ -86,7 +86,7 @@ func findDefaultCredentialProvider(ctx context.Context, logger *slog.Logger) (cr
 	// Check if default workload identity is available: the clientID/tenantID
 	// for the default workload identity and the token file path are required
 	// from environment variables.
-	defaultWorkloadIdentity, err := azidentity.NewWorkloadIdentityCredential(nil)
+	defaultWorkloadIdentity, err := azidentity.NewWorkloadIdentityCredential(cloudazure.GetWorkloadIdentityCredentialOptions(ctx, "", ""))
 	if err != nil {
 		// If no workload identity is found, fall back to regular managed identity.
 		logger.DebugContext(ctx, "Failed to load azure workload identity.", "error", err)
@@ -106,9 +106,8 @@ type managedIdentityCredentialProvider struct {
 }
 
 func (m managedIdentityCredentialProvider) MakeCredential(ctx context.Context, userRequestedIdentity string) (azcore.TokenCredential, error) {
-	credenial, err := azidentity.NewManagedIdentityCredential(&azidentity.ManagedIdentityCredentialOptions{
-		ID: azidentity.ResourceID(userRequestedIdentity),
-	})
+	opts := cloudazure.GetManagedIdentityCredentialOptions(ctx, "", azidentity.ResourceID(userRequestedIdentity))
+	credenial, err := azidentity.NewManagedIdentityCredential(opts)
 	return credenial, trace.Wrap(err)
 }
 
@@ -138,7 +137,7 @@ type workloadIdentityCredentialProvider struct {
 	newClient func(string, azcore.TokenCredential, *arm.ClientOptions) (*cloudazure.UserAssignedIdentitiesClient, error)
 	// newCredential defaults to newWorkloadIdentityCredentialForClientID. Can
 	// be overridden for test.
-	newCredential func(string) (azcore.TokenCredential, error)
+	newCredential func(context.Context, string) (azcore.TokenCredential, error)
 }
 
 func newWorloadIdentityCredentialProvider(ctx context.Context, defaultAgentIdentity azcore.TokenCredential) (*workloadIdentityCredentialProvider, error) {
@@ -161,10 +160,9 @@ func newWorloadIdentityCredentialProvider(ctx context.Context, defaultAgentIdent
 	}, nil
 }
 
-func newWorkloadIdentityCredentialForClientID(clientID string) (azcore.TokenCredential, error) {
-	cred, err := azidentity.NewWorkloadIdentityCredential(&azidentity.WorkloadIdentityCredentialOptions{
-		ClientID: clientID,
-	})
+func newWorkloadIdentityCredentialForClientID(ctx context.Context, clientID string) (azcore.TokenCredential, error) {
+	opts := cloudazure.GetWorkloadIdentityCredentialOptions(ctx, "", clientID)
+	cred, err := azidentity.NewWorkloadIdentityCredential(opts)
 	return cred, trace.Wrap(err)
 }
 
@@ -174,21 +172,12 @@ func (w *workloadIdentityCredentialProvider) MakeCredential(ctx context.Context,
 		return nil, trace.Wrap(err)
 	}
 
-	credential, err := w.newCredential(clientID)
+	credential, err := w.newCredential(ctx, clientID)
 	return credential, trace.Wrap(err)
 }
 
 func (w *workloadIdentityCredentialProvider) MapScope(scope string) string {
-	// This scope ("https://management.core.windows.net/") from `az` CLI tool
-	// will fail for workload identity as workload identity is only expected to
-	// be used with compatible SDKs, whereas the SDK adds ".default" to the
-	// audience:
-	//
-	// https://github.com/Azure/azure-sdk-for-go/blob/9e78ee2b86f0f4989098dd7e545b73841fc8df47/sdk/azcore/arm/runtime/pipeline.go#L35
-	if scope == "https://management.core.windows.net/" {
-		return scope + ".default"
-	}
-	return scope
+	return cloudazure.MapWorkloadIdentityScope(scope)
 }
 
 func (w *workloadIdentityCredentialProvider) getClientID(ctx context.Context, identityResourceID string) (string, error) {
@@ -198,7 +187,7 @@ func (w *workloadIdentityCredentialProvider) getClientID(ctx context.Context, id
 			return "", trace.Wrap(err)
 		}
 
-		client, err := w.newClient(resourceID.SubscriptionID, w.defaultAgentIdentity, nil)
+		client, err := w.newClient(resourceID.SubscriptionID, w.defaultAgentIdentity, cloudazure.GetARMClientOptions(ctx, ""))
 		if err != nil {
 			return "", trace.Wrap(err)
 		}

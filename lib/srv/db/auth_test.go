@@ -418,7 +418,7 @@ func (a *testAuth) GetCloudSQLPassword(ctx context.Context, database types.Datab
 	return cloudSQLPassword, nil
 }
 
-func (a *testAuth) GetAzureAccessToken(ctx context.Context) (string, error) {
+func (a *testAuth) GetAzureAccessToken(ctx context.Context, _ types.Database) (string, error) {
 	a.InfoContext(ctx, "Generating Azure access token")
 	return azureAccessToken, nil
 }

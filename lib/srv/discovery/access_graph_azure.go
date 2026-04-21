@@ -397,6 +397,7 @@ func (s *Server) accessGraphAzureFetchersFromMatchers(
 	for _, matcher := range matchers.AccessGraph.Azure {
 		fetcherCfg := azuresync.Config{
 			SubscriptionID:      matcher.SubscriptionID,
+			CloudEnvironment:    s.AzureCloudEnvironment,
 			Integration:         matcher.Integration,
 			DiscoveryConfigName: discoveryConfigName,
 			OIDCCredentials:     s.AccessPoint,

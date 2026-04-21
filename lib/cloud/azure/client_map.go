@@ -37,11 +37,13 @@ const clientExpireTime = time.Hour
 type ClientMap[ClientType any] struct {
 	clients   *utils.FnCache
 	newClient func(string, azcore.TokenCredential, *arm.ClientOptions) (ClientType, error)
+	getOpts   func(ctx context.Context) (*arm.ClientOptions, error)
 }
 
 // ClientMapOptions defines options for creating a client map.
 type ClientMapOptions struct {
-	clock clockwork.Clock
+	clock   clockwork.Clock
+	getOpts func(ctx context.Context) (*arm.ClientOptions, error)
 }
 
 // ClientMapOption allows setting options as functional arguments to NewClientMap.
@@ -50,6 +52,12 @@ type ClientMapOption func(*ClientMapOptions)
 func withClock(clock clockwork.Clock) ClientMapOption {
 	return func(opts *ClientMapOptions) {
 		opts.clock = clock
+	}
+}
+
+func withClientOptionsGetter(getOpts func(ctx context.Context) (*arm.ClientOptions, error)) ClientMapOption {
+	return func(opts *ClientMapOptions) {
+		opts.getOpts = getOpts
 	}
 }
 
@@ -70,9 +78,15 @@ func NewClientMap[ClientType any](
 	if err != nil {
 		return ClientMap[ClientType]{}, trace.Wrap(err)
 	}
+	if options.getOpts == nil {
+		options.getOpts = func(ctx context.Context) (*arm.ClientOptions, error) {
+			return &arm.ClientOptions{}, nil
+		}
+	}
 	return ClientMap[ClientType]{
 		clients:   cache,
 		newClient: newClient,
+		getOpts:   options.getOpts,
 	}, nil
 }
 
@@ -85,8 +99,10 @@ func (m *ClientMap[ClientType]) Get(ctx context.Context, subscription string, ge
 			return client, trace.Wrap(err)
 		}
 
-		// TODO(gavin): if/when we support AzureChina/AzureGovernment, we will need to specify the cloud in these options
-		options := &arm.ClientOptions{}
+		options, err := m.getOpts(ctx)
+		if err != nil {
+			return client, trace.Wrap(err)
+		}
 		client, err = m.newClient(subscription, cred, options)
 		return client, trace.Wrap(err)
 	})

@@ -250,7 +250,7 @@ func needsADValidation(db types.Database) bool {
 
 	// Azure-hosted databases and RDS Proxy support other authentication
 	// methods, and do not require this section to be validated.
-	if strings.Contains(db.GetURI(), azureutils.MSSQLEndpointSuffix) || db.GetAWS().RDSProxy.Name != "" {
+	if azureutils.IsMSSQLServerEndpoint(db.GetURI()) || db.GetAWS().RDSProxy.Name != "" {
 		return false
 	}
 

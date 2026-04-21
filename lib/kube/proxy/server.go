@@ -83,6 +83,9 @@ type TLSServerConfig struct {
 	ResourceMatchers []services.ResourceMatcher
 	// OnReconcile is called after each kube_cluster resource reconciliation.
 	OnReconcile func(types.KubeClusters)
+	// AzureCloudEnvironment optionally overrides the Azure cloud environment
+	// used by AKS discovery clients (for example "AzureChinaCloud").
+	AzureCloudEnvironment string
 	// azureClients provides Azure SDK clients
 	azureClients azure.Clients
 	// gcpClients provides GCP SDK clients
@@ -174,7 +177,11 @@ func (c *TLSServerConfig) CheckAndSetDefaults() error {
 		c.Log = slog.Default()
 	}
 	if c.azureClients == nil {
-		azureClients, err := azure.NewClients()
+		opts := []azure.ClientsOption{}
+		if c.AzureCloudEnvironment != "" {
+			opts = append(opts, azure.WithCloudEnvironment(c.AzureCloudEnvironment))
+		}
+		azureClients, err := azure.NewClients(opts...)
 		if err != nil {
 			return trace.Wrap(err)
 		}

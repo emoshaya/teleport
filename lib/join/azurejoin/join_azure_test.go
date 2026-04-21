@@ -1213,7 +1213,7 @@ func (c *fakeIMDSClient) GetAttestedData(_ context.Context, nonce string) ([]byt
 	return signedADBytes, nil
 }
 
-func (c *fakeIMDSClient) GetAccessToken(_ context.Context, clientID string) (string, error) {
+func (c *fakeIMDSClient) GetAccessToken(_ context.Context, clientID, resource string) (string, error) {
 	return c.accessToken, trace.Wrap(c.accessTokenErr)
 }
 

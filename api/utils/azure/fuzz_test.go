@@ -70,6 +70,8 @@ func FuzzParseMSSQLEndpoint(f *testing.F) {
 	f.Add(":1234")
 	f.Add("foo:1234")
 	f.Add("name.database.windows.net:1234")
+	f.Add("name.database.chinacloudapi.cn:1234")
+	f.Add("name.database.usgovcloudapi.net:1234")
 	f.Add(".database.windows.net:1234")
 
 	f.Fuzz(func(t *testing.T, endpoint string) {

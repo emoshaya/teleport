@@ -17,17 +17,48 @@ package entraid
 
 import (
 	"net/url"
+	"os"
 	"path"
+	"strings"
 )
 
 // FederationMetadataURL returns the URL for the federation metadata endpoint
 func FederationMetadataURL(tenantID, appID string) string {
+	const defaultHost = "login.microsoftonline.com"
+
+	host := defaultHost
+	if value := normalizeAuthorityHost(os.Getenv("AZURE_AUTHORITY_HOST")); value != "" {
+		switch value {
+		case "login.microsoftonline.com", "login.windows.net", "login.microsoftonline.us", "login.chinacloudapi.cn", "login.partner.microsoftonline.cn":
+			host = value
+		}
+	}
+
 	return (&url.URL{
 		Scheme: "https",
-		Host:   "login.microsoftonline.com",
+		Host:   host,
 		Path:   path.Join(tenantID, "federationmetadata", "2007-06", "federationmetadata.xml"),
 		RawQuery: url.Values{
 			"appid": {appID},
 		}.Encode(),
 	}).String()
+}
+
+func normalizeAuthorityHost(authorityHost string) string {
+	authorityHost = strings.TrimSpace(authorityHost)
+	if authorityHost == "" {
+		return ""
+	}
+
+	rawURL := authorityHost
+	if !strings.Contains(rawURL, "://") {
+		rawURL = "https://" + rawURL
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err == nil && parsed.Hostname() != "" {
+		return strings.ToLower(parsed.Hostname())
+	}
+
+	return strings.ToLower(strings.Trim(authorityHost, "/"))
 }

@@ -90,13 +90,20 @@ func WithIntegrationCredentials(integrationName string, auth azureOIDCCredential
 			}
 			cred, err := azidentity.NewClientAssertionCredential(spec.TenantID, spec.ClientID, func(ctx context.Context) (string, error) {
 				return auth.GenerateAzureOIDCToken(ctx, integrationName)
-				// TODO(gavin): if/when we support AzureChina/AzureGovernment, we will need to specify the cloud in these options
-			}, nil)
+			}, clt.getClientAssertionCredentialOptions(ctx))
 			if err != nil {
 				return nil, trace.Wrap(err)
 			}
 			return cred, nil
 		}
+	}
+}
+
+// WithCloudEnvironment overrides the Azure cloud environment used by ARM
+// clients and credentials.
+func WithCloudEnvironment(cloudEnvironment string) ClientsOption {
+	return func(clt *clients) {
+		clt.cloudEnvironment = cloudEnvironment
 	}
 }
 
@@ -108,42 +115,41 @@ func NewClients(opts ...ClientsOption) (Clients, error) {
 		kubernetesClient: make(map[string]AKSClient),
 	}
 	var err error
-	azClients.redisClients, err = NewClientMap(NewRedisClient)
+	azClients.redisClients, err = NewClientMap(NewRedisClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	azClients.redisEnterpriseClients, err = NewClientMap(NewRedisEnterpriseClient)
+	azClients.redisEnterpriseClients, err = NewClientMap(NewRedisEnterpriseClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	azClients.virtualMachinesClients, err = NewClientMap(NewVirtualMachinesClient)
+	azClients.virtualMachinesClients, err = NewClientMap(NewVirtualMachinesClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	azClients.sqlServerClients, err = NewClientMap(NewSQLClient)
+	azClients.sqlServerClients, err = NewClientMap(NewSQLClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	azClients.managedSQLServerClients, err = NewClientMap(NewManagedSQLClient)
+	azClients.managedSQLServerClients, err = NewClientMap(NewManagedSQLClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	azClients.mySQLFlexServersClients, err = NewClientMap(NewMySQLFlexServersClient)
+	azClients.mySQLFlexServersClients, err = NewClientMap(NewMySQLFlexServersClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	azClients.postgresFlexServersClients, err = NewClientMap(NewPostgresFlexServersClient)
+	azClients.postgresFlexServersClients, err = NewClientMap(NewPostgresFlexServersClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	azClients.runCommandClients, err = NewClientMap(NewRunCommandClient)
+	azClients.runCommandClients, err = NewClientMap(NewRunCommandClient, withClientOptionsGetter(azClients.getARMClientOptions))
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 
 	azClients.credentialFunc = func(ctx context.Context) (azcore.TokenCredential, error) {
-		// TODO(gavin): if/when we support AzureChina/AzureGovernment, we will need to specify the cloud in these options
-		return azidentity.NewDefaultAzureCredential(nil)
+		return azidentity.NewDefaultAzureCredential(azClients.getDefaultAzureCredentialOptions(ctx))
 	}
 
 	for _, opt := range opts {
@@ -157,6 +163,13 @@ func NewClients(opts ...ClientsOption) (Clients, error) {
 type clients struct {
 	// mtx is used for locking.
 	mtx sync.RWMutex
+
+	cloudEnvironment string
+
+	// clientOptions are shared by Azure clients and credentials.
+	clientOptionsMu   sync.RWMutex
+	clientOptions     azcore.ClientOptions
+	clientOptionsInit bool
 
 	// credentialFunc creates new Azure credential.
 	credentialFunc func(ctx context.Context) (azcore.TokenCredential, error)
@@ -289,6 +302,43 @@ func (c *clients) initCredential(ctx context.Context) (azcore.TokenCredential, e
 	return cred, nil
 }
 
+func (c *clients) getClientOptions(ctx context.Context) azcore.ClientOptions {
+	c.clientOptionsMu.RLock()
+	if c.clientOptionsInit {
+		defer c.clientOptionsMu.RUnlock()
+		return c.clientOptions
+	}
+	c.clientOptionsMu.RUnlock()
+
+	opts := GetClientOptions(ctx, c.cloudEnvironment)
+	c.clientOptionsMu.Lock()
+	defer c.clientOptionsMu.Unlock()
+	if c.clientOptionsInit {
+		return c.clientOptions
+	}
+	c.clientOptions = opts
+	c.clientOptionsInit = true
+	return c.clientOptions
+}
+
+func (c *clients) getARMClientOptions(ctx context.Context) (*arm.ClientOptions, error) {
+	return &arm.ClientOptions{
+		ClientOptions: c.getClientOptions(ctx),
+	}, nil
+}
+
+func (c *clients) getDefaultAzureCredentialOptions(ctx context.Context) *azidentity.DefaultAzureCredentialOptions {
+	return &azidentity.DefaultAzureCredentialOptions{
+		ClientOptions: c.getClientOptions(ctx),
+	}
+}
+
+func (c *clients) getClientAssertionCredentialOptions(ctx context.Context) *azidentity.ClientAssertionCredentialOptions {
+	return &azidentity.ClientAssertionCredentialOptions{
+		ClientOptions: c.getClientOptions(ctx),
+	}
+}
+
 func (c *clients) initMySQLClient(ctx context.Context, subscription string) (DBServersClient, error) {
 	cred, err := c.GetCredential(ctx)
 	if err != nil {
@@ -301,8 +351,10 @@ func (c *clients) initMySQLClient(ctx context.Context, subscription string) (DBS
 		return client, nil
 	}
 
-	// TODO(gavin): if/when we support AzureChina/AzureGovernment, we will need to specify the cloud in these options
-	options := &arm.ClientOptions{}
+	options, err := c.getARMClientOptions(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	api, err := armmysql.NewServersClient(subscription, cred, options)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -323,8 +375,10 @@ func (c *clients) initPostgresClient(ctx context.Context, subscription string) (
 	if client, ok := c.postgresClients[subscription]; ok { // If some other thread already got here first.
 		return client, nil
 	}
-	// TODO(gavin): if/when we support AzureChina/AzureGovernment, we will need to specify the cloud in these options
-	options := &arm.ClientOptions{}
+	options, err := c.getARMClientOptions(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	api, err := armpostgresql.NewServersClient(subscription, cred, options)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -345,9 +399,10 @@ func (c *clients) initSubscriptionsClient(ctx context.Context) (*SubscriptionCli
 	if c.subscriptionsClient != nil { // If some other thread already got here first.
 		return c.subscriptionsClient, nil
 	}
-	// TODO(gavin): if/when we support AzureChina/AzureGovernment,
-	// we will need to specify the cloud in these options
-	opts := &arm.ClientOptions{}
+	opts, err := c.getARMClientOptions(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	armClient, err := armsubscription.NewSubscriptionsClient(cred, opts)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -368,15 +423,25 @@ func (c *clients) initKubernetesClient(ctx context.Context, subscription string)
 	if client, ok := c.kubernetesClient[subscription]; ok { // If some other thread already got here first.
 		return client, nil
 	}
-	// TODO(tigrato): if/when we support AzureChina/AzureGovernment, we will need to specify the cloud in these options
-	options := &arm.ClientOptions{}
+	options, err := c.getARMClientOptions(ctx)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
 	api, err := armcontainerservice.NewManagedClustersClient(subscription, cred, options)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	clientOptions := c.getClientOptions(ctx)
 	client := NewAKSClustersClient(
 		api, func(options *azidentity.DefaultAzureCredentialOptions) (GetToken, error) {
-			cc, err := azidentity.NewDefaultAzureCredential(options)
+			merged := &azidentity.DefaultAzureCredentialOptions{
+				ClientOptions: clientOptions,
+			}
+			if options != nil {
+				merged = options
+				merged.ClientOptions = clientOptions
+			}
+			cc, err := azidentity.NewDefaultAzureCredential(merged)
 			return cc, err
 		})
 	c.kubernetesClient[subscription] = client

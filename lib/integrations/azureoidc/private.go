@@ -33,6 +33,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gravitational/trace"
 
+	cloudazure "github.com/gravitational/teleport/lib/cloud/azure"
 	"github.com/gravitational/teleport/lib/defaults"
 )
 
@@ -85,7 +86,7 @@ func exchangeToken(ctx context.Context, tenantID string, token msalToken) (strin
 	}
 
 	uri := url.URL{
-		Host:   "login.microsoftonline.com",
+		Host:   getAzureAuthorityHost(ctx),
 		Path:   path.Join(tenantID, "oauth2/v2.0/token"),
 		Scheme: "https",
 	}
@@ -145,6 +146,20 @@ func getPrivateAPIToken(ctx context.Context, tenantID string) (string, error) {
 		}
 	}
 	return "", trace.Wrap(err, "no viable token")
+}
+
+func getAzureAuthorityHost(ctx context.Context) string {
+	authorityHost := cloudazure.GetClientOptions(ctx, "").Cloud.ActiveDirectoryAuthorityHost
+	if authorityHost == "" {
+		return "login.microsoftonline.com"
+	}
+
+	parsed, err := url.Parse(authorityHost)
+	if err == nil && parsed.Hostname() != "" {
+		return parsed.Hostname()
+	}
+
+	return strings.Trim(strings.TrimPrefix(authorityHost, "https://"), "/")
 }
 
 // privateAPIGet invokes GET on the given endpoint of the "private" main.iam.ad.ext.azure.com azure API.

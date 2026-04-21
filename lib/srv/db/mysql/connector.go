@@ -151,7 +151,7 @@ func (c *connector) connect(
 			dialer = newGCPTLSDialer(tlsConfig)
 		}
 	case c.database.IsAzure():
-		password, err = c.auth.GetAzureAccessToken(ctx)
+		password, err = c.auth.GetAzureAccessToken(ctx, c.database)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}

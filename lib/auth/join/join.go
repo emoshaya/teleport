@@ -80,6 +80,9 @@ type AzureParams struct {
 	// ClientID is the client ID of the managed identity for Teleport to assume
 	// when authenticating a node.
 	ClientID string
+	// CloudEnvironment optionally overrides the Azure cloud environment used
+	// for managed identity access token acquisition.
+	CloudEnvironment string
 	// IMDSClient overrides the client used to fetch data from Azure IMDS.
 	IMDSClient AzureIMDSClient
 	// IssuerHTTPClient, if set, overrides the default HTTP client used to
@@ -92,7 +95,7 @@ type AzureParams struct {
 type AzureIMDSClient interface {
 	IsAvailable(context.Context) bool
 	GetAttestedData(ctx context.Context, nonce string) ([]byte, error)
-	GetAccessToken(ctx context.Context, clientID string) (string, error)
+	GetAccessToken(ctx context.Context, clientID, resource string) (string, error)
 }
 
 // GitlabParams is the parameters specific to the gitlab join method.
@@ -895,7 +898,19 @@ func registerUsingAzureMethod(
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
-		accessToken, err := imds.GetAccessToken(ctx, params.AzureParams.ClientID)
+		resource := ""
+		if params.AzureParams.CloudEnvironment != "" {
+			var ok bool
+			resource, ok = azure.AccessTokenResourceForCloudEnvironment(params.AzureParams.CloudEnvironment)
+			if !ok {
+				return nil, trace.BadParameter(
+					"unsupported Azure cloud environment %q (supported values: %v)",
+					params.AzureParams.CloudEnvironment,
+					azure.SupportedCloudEnvironments(),
+				)
+			}
+		}
+		accessToken, err := imds.GetAccessToken(ctx, params.AzureParams.ClientID, resource)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}

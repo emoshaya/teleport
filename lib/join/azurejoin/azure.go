@@ -47,6 +47,8 @@ import (
 )
 
 const (
+	// AzureAccessTokenAudience is the Azure Public ARM audience accepted for
+	// backwards compatibility and tests.
 	AzureAccessTokenAudience = "https://management.azure.com/"
 
 	// azureUserAgent specifies the Azure User-Agent identification for telemetry.
@@ -56,6 +58,28 @@ const (
 	// azureVirtualMachineScaleSet specifies the Azure virtual machine scale set resource type.
 	azureVirtualMachineScaleSet = "virtualMachineScaleSets"
 )
+
+var azureResourceManagerAudiences = map[string]struct{}{
+	normalizeAudience("https://management.azure.com/"):              {},
+	normalizeAudience("https://management.core.windows.net/"):       {},
+	normalizeAudience("https://management.chinacloudapi.cn/"):       {},
+	normalizeAudience("https://management.core.chinacloudapi.cn/"):  {},
+	normalizeAudience("https://management.usgovcloudapi.net/"):      {},
+	normalizeAudience("https://management.core.usgovcloudapi.net/"): {},
+	normalizeAudience("https://management.microsoftazure.de/"):      {},
+	normalizeAudience("https://management.core.cloudapi.de/"):       {},
+}
+
+var allowedAzureIssuerHosts = map[string]struct{}{
+	"sts.windows.net":                  {},
+	"sts.chinacloudapi.cn":             {},
+	"sts.microsoftonline.de":           {},
+	"login.microsoftonline.com":        {},
+	"login.microsoftonline.us":         {},
+	"login.microsoftonline.de":         {},
+	"login.chinacloudapi.cn":           {},
+	"login.partner.microsoftonline.cn": {},
+}
 
 // Structs for unmarshaling attested data. Schema can be found at
 // https://learn.microsoft.com/en-us/azure/virtual-machines/linux/instance-metadata-service?tabs=linux#response-2
@@ -144,28 +168,92 @@ type AzureJoinConfig struct {
 	IssuerHTTPClient utils.HTTPDoClient
 }
 
-func azureVerifyFuncFromOIDCVerifier(clientID string) AzureVerifyTokenFunc {
+func normalizeAudience(audience string) string {
+	return strings.TrimSuffix(audience, "/")
+}
+
+func isAzureResourceManagerAudience(audience string) bool {
+	_, ok := azureResourceManagerAudiences[normalizeAudience(audience)]
+	return ok
+}
+
+func issuerMatchesAzureTenant(issuerURL, tenantID string) bool {
+	issuer, err := url.Parse(issuerURL)
+	if err != nil {
+		return false
+	}
+	if issuer.Scheme != "https" {
+		return false
+	}
+	if _, ok := allowedAzureIssuerHosts[issuer.Hostname()]; !ok {
+		return false
+	}
+	// Azure issuer URLs are either:
+	// - https://<host>/<tenant-id>/
+	// - https://<host>/<tenant-id>/v2.0
+	path := strings.Trim(issuer.EscapedPath(), "/")
+	tenantPath := strings.Trim(tenantID, "/")
+	return strings.EqualFold(path, tenantPath) ||
+		strings.EqualFold(path, tenantPath+"/v2.0")
+}
+
+func azureVerifyFuncFromOIDCVerifier() AzureVerifyTokenFunc {
 	return func(ctx context.Context, rawIDToken string) (*AccessTokenClaims, error) {
 		token, err := jwt.ParseSigned(rawIDToken)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
-		// Need to get the tenant ID before we verify so we can construct the issuer URL.
+
 		var unverifiedClaims AccessTokenClaims
 		if err := token.UnsafeClaimsWithoutVerification(&unverifiedClaims); err != nil {
 			return nil, trace.Wrap(err)
 		}
-		issuer, err := url.JoinPath("https://sts.windows.net", unverifiedClaims.TenantID, "/")
-		if err != nil {
-			return nil, trace.Wrap(err)
+
+		if unverifiedClaims.TenantID == "" {
+			return nil, trace.AccessDenied("token missing tenant claim")
 		}
-		return liboidc.ValidateToken[*AccessTokenClaims](ctx, issuer, clientID, rawIDToken)
+		if !issuerMatchesAzureTenant(unverifiedClaims.Issuer, unverifiedClaims.TenantID) {
+			return nil, trace.AccessDenied(
+				"token issuer %q is not a supported Azure issuer for tenant %q",
+				unverifiedClaims.Issuer,
+				unverifiedClaims.TenantID,
+			)
+		}
+
+		var audiences []string
+		for _, audience := range unverifiedClaims.Audience {
+			if isAzureResourceManagerAudience(audience) {
+				audiences = append(audiences, audience)
+			}
+		}
+		if len(audiences) == 0 {
+			return nil, trace.AccessDenied(
+				"token audience %q is not a supported Azure Resource Manager audience",
+				unverifiedClaims.Audience,
+			)
+		}
+
+		var errs []error
+		for _, audience := range audiences {
+			claims, err := liboidc.ValidateToken[*AccessTokenClaims](
+				ctx,
+				unverifiedClaims.Issuer,
+				audience,
+				rawIDToken,
+			)
+			if err == nil {
+				return claims, nil
+			}
+			errs = append(errs, trace.Wrap(err, "issuer=%q audience=%q", unverifiedClaims.Issuer, audience))
+		}
+
+		return nil, trace.NewAggregate(errs...)
 	}
 }
 
 func (cfg *AzureJoinConfig) checkAndSetDefaults() error {
 	if cfg.Verify == nil {
-		cfg.Verify = azureVerifyFuncFromOIDCVerifier(AzureAccessTokenAudience)
+		cfg.Verify = azureVerifyFuncFromOIDCVerifier()
 	}
 
 	if cfg.CertificateAuthorities == nil {
@@ -303,26 +391,22 @@ func verifyVMIdentity(
 		return nil, trace.Wrap(err)
 	}
 
-	expectedIssuer, err := url.JoinPath("https://sts.windows.net", tokenClaims.TenantID, "/")
-	if err != nil {
-		return nil, trace.Wrap(err)
-	}
-	// v2 tokens have the version appended to the issuer.
-	if tokenClaims.Version == "2.0" {
-		expectedIssuer, err = url.JoinPath(expectedIssuer, "2.0")
-		if err != nil {
-			return nil, trace.Wrap(err)
-		}
-	}
-
 	expectedClaims := jwt.Expected{
-		Issuer:   expectedIssuer,
-		Audience: jwt.Audience{AzureAccessTokenAudience},
-		Time:     requestStart,
+		Time: requestStart,
 	}
 
 	if err := tokenClaims.asJWTClaims().Validate(expectedClaims); err != nil {
 		return nil, trace.Wrap(err)
+	}
+	if !issuerMatchesAzureTenant(tokenClaims.Issuer, tokenClaims.TenantID) {
+		return nil, trace.AccessDenied(
+			"token issuer %q is not a supported Azure issuer for tenant %q",
+			tokenClaims.Issuer,
+			tokenClaims.TenantID,
+		)
+	}
+	if !slices.ContainsFunc(tokenClaims.Audience, isAzureResourceManagerAudience) {
+		return nil, trace.AccessDenied("token audience %q is not supported", tokenClaims.Audience)
 	}
 
 	// Listing all VMs in an Azure subscription during the verification process

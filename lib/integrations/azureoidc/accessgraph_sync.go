@@ -25,14 +25,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	armpolicy "github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/google/uuid"
 	"github.com/gravitational/trace"
 
+	cloudazure "github.com/gravitational/teleport/lib/cloud/azure"
 	"github.com/gravitational/teleport/lib/cloud/provisioning"
 	"github.com/gravitational/teleport/lib/msgraph"
 	"github.com/gravitational/teleport/lib/msgraph/models"
@@ -78,19 +77,13 @@ type azureConfigClient struct {
 // NewAzureConfigClient returns a new config client for granting the managed identity the necessary permissions
 // to fetch Azure resources
 func NewAzureConfigClient(subscriptionID string) (AccessGraphAzureConfigureClient, error) {
-	telemetryOpts := policy.TelemetryOptions{
-		ApplicationID: azureUserAgent,
-	}
-	opts := &armpolicy.ClientOptions{
-		ClientOptions: policy.ClientOptions{
-			Telemetry: telemetryOpts,
-		},
-	}
-	cred, err := azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
-		ClientOptions: azcore.ClientOptions{
-			Telemetry: telemetryOpts,
-		},
-	})
+	opts := cloudazure.GetARMClientOptions(context.Background(), "")
+	opts.Telemetry = policy.TelemetryOptions{ApplicationID: azureUserAgent}
+
+	credOpts := cloudazure.GetDefaultAzureCredentialOptions(context.Background(), "")
+	credOpts.ClientOptions.Telemetry = policy.TelemetryOptions{ApplicationID: azureUserAgent}
+
+	cred, err := azidentity.NewDefaultAzureCredential(credOpts)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
@@ -104,6 +97,7 @@ func NewAzureConfigClient(subscriptionID string) (AccessGraphAzureConfigureClien
 	}
 	graphCli, err := msgraph.NewClient(msgraph.Config{
 		TokenProvider: cred,
+		GraphEndpoint: cloudazure.GetMSGraphEndpoint(context.Background(), ""),
 	})
 	if err != nil {
 		return nil, trace.BadParameter("failed to create msgraph client: %v", err)

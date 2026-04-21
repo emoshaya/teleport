@@ -638,6 +638,7 @@ func TestNewClient(t *testing.T) {
 		name                  string
 		config                Config
 		expectedGraphEndpoint string
+		expectedTokenScope    string
 		errExpected           bool
 		errAssertion          require.ErrorAssertionFunc
 	}{
@@ -648,6 +649,7 @@ func TestNewClient(t *testing.T) {
 				GraphEndpoint: "",
 			},
 			expectedGraphEndpoint: types.MSGraphDefaultEndpoint,
+			expectedTokenScope:    types.MSGraphDefaultEndpoint + "/.default",
 			errAssertion:          require.NoError,
 		},
 		{
@@ -657,6 +659,7 @@ func TestNewClient(t *testing.T) {
 				GraphEndpoint: "https://dod-graph.microsoft.us",
 			},
 			expectedGraphEndpoint: "https://dod-graph.microsoft.us",
+			expectedTokenScope:    "https://dod-graph.microsoft.us/.default",
 			errAssertion:          require.NoError,
 		},
 		{
@@ -677,6 +680,7 @@ func TestNewClient(t *testing.T) {
 			test.errAssertion(t, err)
 			if !test.errExpected {
 				require.Equal(t, test.expectedGraphEndpoint+"/"+graphVersion, clt.baseURL.String())
+				require.Equal(t, test.expectedTokenScope, clt.tokenScope)
 			}
 		})
 	}

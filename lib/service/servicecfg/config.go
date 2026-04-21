@@ -469,7 +469,8 @@ type JoinParams struct {
 
 // AzureJoinParams is the parameters specific to the azure join method.
 type AzureJoinParams struct {
-	ClientID string
+	ClientID         string
+	CloudEnvironment string
 }
 
 // BoundKeypairParams contains parameters specific to bound keypair joining.

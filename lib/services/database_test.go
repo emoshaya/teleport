@@ -391,6 +391,15 @@ func TestValidateDatabase(t *testing.T) {
 			expectError: false,
 		},
 		{
+			inputName: "valid-mssql-azure-china-ad",
+			inputSpec: types.DatabaseSpecV3{
+				Protocol: defaults.ProtocolSQLServer,
+				URI:      "sqlserver.database.chinacloudapi.cn:1433",
+				AD:       types.AD{},
+			},
+			expectError: false,
+		},
+		{
 			inputName: "valid-mssql-rds-kerberos-keytab",
 			inputSpec: types.DatabaseSpecV3{
 				Protocol: defaults.ProtocolSQLServer,

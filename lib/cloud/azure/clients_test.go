@@ -20,11 +20,13 @@ import (
 	"context"
 	"testing"
 
+	armcloud "github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/gravitational/trace"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gravitational/teleport/api/defaults"
 	"github.com/gravitational/teleport/api/types"
+	imdsazure "github.com/gravitational/teleport/lib/cloud/imds/azure"
 )
 
 type testAzureOIDCCredentials struct {
@@ -120,4 +122,19 @@ func TestWithAzureIntegrationCredentials(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWithCloudEnvironment(t *testing.T) {
+	azureClients, err := NewClients(WithCloudEnvironment(imdsazure.AzureChinaCloudEnvironment))
+	require.NoError(t, err)
+
+	impl, ok := azureClients.(*clients)
+	require.True(t, ok)
+
+	opts := impl.getClientOptions(context.Background())
+	require.Equal(t, "https://login.chinacloudapi.cn/", opts.Cloud.ActiveDirectoryAuthorityHost)
+	rmCfg, ok := opts.Cloud.Services[armcloud.ResourceManager]
+	require.True(t, ok)
+	require.Equal(t, "https://management.core.chinacloudapi.cn/", rmCfg.Audience)
+	require.Equal(t, "https://management.chinacloudapi.cn", rmCfg.Endpoint)
 }

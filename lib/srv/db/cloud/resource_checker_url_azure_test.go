@@ -44,6 +44,7 @@ func TestURLChecker_Azure(t *testing.T) {
 			ResourceID: "/subscriptions/<sub>/resourceGroups/<group>/providers/Microsoft.Cache/redisEnterprise/databases/default",
 		}),
 		mustMakeAzureDatabase(t, "sqlserver", defaults.ProtocolSQLServer, "sqlserver.database.windows.net:1433", types.Azure{}),
+		mustMakeAzureDatabase(t, "sqlserver-china", defaults.ProtocolSQLServer, "sqlserver.database.chinacloudapi.cn:1433", types.Azure{}),
 	}
 
 	c := newURLChecker(DiscoveryResourceCheckerConfig{
